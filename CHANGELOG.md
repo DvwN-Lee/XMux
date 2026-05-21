@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.3-beta.3 - 2026-05-21
+
+- Moved Claude and Codex session records into a unified
+  `.codex/xmux/sessions/<role>--<name>.json` collection while keeping each side
+  as a single-writer file.
+- Added migration and legacy mirror support so existing per-role session files
+  continue to work during setup and cleanup.
+- Hardened Codex hook pending-session resolution so duplicate response or
+  request titles across active sessions are treated as ambiguous instead of
+  routing to the newest pending session.
+- Preserved failed legacy session migration inputs during `cleanup-legacy`
+  instead of deleting unreadable or invalid files.
+- Removed `--prompt-file` from Claude/Codex prompt input surfaces and updated
+  docs, completion, and tests around the supported `--prompt`/`--stdin` paths.
+
 ## 2.0.3-beta.2 - 2026-05-21
 
 - Persisted Claude pane-run exits back to session state so natural Claude TUI
