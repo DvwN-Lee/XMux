@@ -16,11 +16,22 @@ XMux path variables are split by responsibility:
 - `XMUX_STATE_DIR`: project-local runtime state, usually
   `$XMUX_PROJECT_DIR/.codex/xmux`.
 
+Unified session state is stored under:
+
+```text
+<project>/.codex/xmux/sessions/
+  codex--<name>.json
+  claude--<name>.json
+```
+
+These files share the `xmux.session.v1` schema and use the `role` field to
+distinguish Codex and Claude. Each side writes only its own role file; pair
+files containing both sides are intentionally not used.
+
 Claude harness state is stored under:
 
 ```text
 <project>/.codex/xmux/claude/
-  sessions/<name>.json
   requests/<request_id>.json
   events.jsonl
 ```
@@ -29,7 +40,6 @@ Codex pane harness state is stored under:
 
 ```text
 <project>/.codex/xmux/codex/
-  sessions/<name>.json
   events.jsonl
 ```
 
@@ -62,12 +72,15 @@ Inside Codex, Claude work must be explicitly triggered by the user:
 $xmux-claude 지금까지 작업한 사항을 정리해서 Claude에게 분석 요청
 ```
 
-Codex treats the text after `$xmux-claude` as synthesis intent. It writes a
-Claude-facing artifact and sends that generated prompt through:
+Codex treats the text after `$xmux-claude` as synthesis intent. It builds a
+Claude-facing prompt and sends it through:
 
 ```zsh
 xmux claude send --trigger xmux-claude --title "<request title>" --prompt "<generated Claude-facing prompt>" --quiet
 ```
+
+`--title` labels the request in XMux metadata and status output; it is not part
+of the pane-visible Claude prompt.
 
 `xmux claude send` verifies the global Claude hook/skill integration, creates
 the right-side Claude Code TUI pane when needed, and then injects a visible source-based

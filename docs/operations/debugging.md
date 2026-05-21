@@ -51,7 +51,7 @@ Inspect generated state under:
 ```text
 .codex/xmux/claude/requests/
 .codex/xmux/claude/events.jsonl
-.codex/xmux/codex/sessions/
+.codex/xmux/sessions/
 .codex/xmux/codex/events.jsonl
 ```
 

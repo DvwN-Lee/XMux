@@ -22,7 +22,10 @@ packaging/homebrew/
 tests/*
 !tests/codex-setup-hooks.js
 !tests/codex-setup-path.js
+!tests/codex-hook-resolution.js
 !tests/claude-pane-context.js
+!tests/claude-prompt-input.js
+!tests/session-state.js
 !tests/scoped-naming.zsh
 **/__pycache__/
 **/.pytest_cache/

@@ -93,14 +93,17 @@ Runtime state is project-local:
 
 ```text
 <project>/.codex/xmux/
+  sessions/<role>--<name>.json
   claude/
-    sessions/<name>.json
     requests/<request_id>.json
     events.jsonl
   codex/
-    sessions/<name>.json
     events.jsonl
 ```
+
+The root `sessions/` collection is the unified role-discriminated session
+state. Codex writes `codex--<name>.json`, Claude writes `claude--<name>.json`,
+and pair files containing both sides are intentionally not used.
 
 Global setup is limited to protocol assets and hooks:
 

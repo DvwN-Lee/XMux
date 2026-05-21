@@ -43,11 +43,10 @@ session before it injects the actual Claude-facing prompt into the Claude pane:
 ```
 
 Request IDs, nonces, and hashes stay in XMux metadata and pane-run memory.
-`--title` is a short transport summary for JSON state only; it is not used as
-the visible Claude prompt. The Claude hook validates the active request state
-and verifies the visible prompt body against the volatile in-memory body. XMux
-does not persist the prompt body in its JSON state. Use `--stdin` only when the
-calling environment provides non-TTY stdin; never create an empty request.
+`--title` is a short request label for XMux metadata and status output only; it
+is not used as the visible Claude prompt. The Claude hook validates the active
+request state and verifies the visible prompt body against the volatile
+in-memory body. XMux does not persist the prompt body in its JSON state.
 
 For raw mode, use the explicit raw trigger:
 

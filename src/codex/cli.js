@@ -6,6 +6,12 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const {
+  listUnifiedSessions,
+  unifiedSessionPath,
+  writeLegacySessionMirror,
+  writeUnifiedSession,
+} = require('../xmux/session-state');
 
 const SCHEMA_SESSION = 'xmux.codex.session.v1';
 const DEFAULT_SESSION = 'default';
@@ -113,7 +119,7 @@ function claudeRoot(root = stateRoot()) {
 }
 
 function sessionsDir(root = stateRoot()) {
-  return path.join(codexRoot(root), 'sessions');
+  return path.join(root, 'sessions');
 }
 
 function claudeRequestsDir(root = stateRoot()) {
@@ -322,7 +328,7 @@ function appendEvent(event, data = {}, root = stateRoot()) {
 }
 
 function sessionPath(name, root = stateRoot()) {
-  return path.join(sessionsDir(root), `${safeComponent(name, 'session')}.json`);
+  return unifiedSessionPath('codex', name, root);
 }
 
 function claudeRequestPath(id, root = stateRoot()) {
@@ -338,7 +344,8 @@ function readSession(name, root = stateRoot()) {
 }
 
 function writeSession(session, root = stateRoot()) {
-  writeJson(sessionPath(session.name, root), session);
+  writeUnifiedSession('codex', session, root);
+  writeLegacySessionMirror('codex', session, root);
 }
 
 function pendingTtlMs() {
@@ -376,10 +383,8 @@ function clearExpiredPending(session, root = stateRoot()) {
 
 function listSessions(root = stateRoot()) {
   ensureDir(sessionsDir(root));
-  return fs.readdirSync(sessionsDir(root))
-    .filter((name) => name.endsWith('.json'))
-    .map((name) => readJson(path.join(sessionsDir(root), name), null))
-    .filter((item) => item && typeof item === 'object')
+  return listUnifiedSessions(root)
+    .filter((item) => item.role === 'codex')
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
@@ -429,14 +434,7 @@ function readStdinRequired() {
 function readPrompt(opts) {
   if (opts.stdin) return readStdinRequired();
   if (opts.prompt !== undefined) return String(opts.prompt);
-  if (opts['prompt-file']) {
-    const input = path.resolve(expandUser(opts['prompt-file']));
-    const stat = fs.lstatSync(input);
-    if (stat.isSymbolicLink()) throw new Error('--prompt-file must not be a symlink');
-    if (!stat.isFile()) throw new Error('--prompt-file must be a regular file');
-    return fs.readFileSync(input, 'utf8');
-  }
-  throw new Error('provide --prompt, --stdin, or --prompt-file');
+  throw new Error('provide --prompt or --stdin');
 }
 
 function socketRequestOnce(sock, payload, timeoutMs = 5000) {
@@ -734,6 +732,66 @@ function hookSession(root = stateRoot()) {
   return session && session.active !== false ? session : null;
 }
 
+function envHookSession(root = stateRoot()) {
+  const envName = String(process.env.XMUX_CODEX_SESSION_NAME || process.env.XMUX_TEAM || '').trim();
+  if (!envName) return null;
+  try {
+    const session = readSession(safeComponent(envName, 'session'), root);
+    return session && session.active !== false ? session : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function uniquePendingSession(candidates) {
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function pendingSessions(field, root = stateRoot()) {
+  return listSessions(root)
+    .filter((session) => session && session.active !== false && session[field] && session[field].request_id);
+}
+
+function responsePendingMatches(session, parsed, root = stateRoot()) {
+  const pending = session && session.pending_response;
+  if (!pending || !pending.request_id) return false;
+  if (pending.title && parsed.title && pending.title === parsed.title) return true;
+  const request = readJson(claudeRequestPath(pending.request_id, root), null);
+  return Boolean(request && request.response_title && parsed.title && request.response_title === parsed.title);
+}
+
+function requestPendingMatches(session, input, parsed, root = stateRoot()) {
+  const pending = session && session.pending_request;
+  if (!pending || !pending.request_id) return false;
+  const visibleBody = visibleMarkerBody(input, CLAUDE_REQUEST_MARKER);
+  if (visibleBody.trim() && pending.prompt_sha256 && pending.prompt_sha256 === sha256(visibleBody)) return true;
+  if (pending.title && parsed.title && pending.title === parsed.title) return true;
+  const request = readJson(claudeRequestPath(pending.request_id, root), null);
+  return Boolean(request && request.title && parsed.title && request.title === parsed.title);
+}
+
+function resolvePendingResponseSession(parsed, root = stateRoot()) {
+  const envSession = envHookSession(root);
+  if (responsePendingMatches(envSession, parsed, root)) return envSession;
+  const candidates = pendingSessions('pending_response', root);
+  const matches = candidates.filter((session) => responsePendingMatches(session, parsed, root));
+  const matched = uniquePendingSession(matches);
+  if (matched) return matched;
+  if (matches.length > 1) return null;
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function resolvePendingRequestSession(input, parsed, root = stateRoot()) {
+  const envSession = envHookSession(root);
+  if (requestPendingMatches(envSession, input, parsed, root)) return envSession;
+  const candidates = pendingSessions('pending_request', root);
+  const matches = candidates.filter((session) => requestPendingMatches(session, input, parsed, root));
+  const matched = uniquePendingSession(matches);
+  if (matched) return matched;
+  if (matches.length > 1) return null;
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 async function retrieveResponseBody(session, request, root = stateRoot()) {
   const sock = session.socket_path || socketPath(session.name, root);
   const result = await socketRequest(sock, {
@@ -796,7 +854,7 @@ async function acceptClaudeResponseMarker(input, root = stateRoot()) {
   const parsed = parseResponseMarker(input);
   if (!parsed) return { status: 'no_marker' };
 
-  const session = hookSession(root);
+  const session = resolvePendingResponseSession(parsed, root);
   const pending = session && session.pending_response ? session.pending_response : null;
   if (!session || !pending || !pending.request_id) {
     return { status: 'invalid', request_id: '', reason: 'pending_response_not_found' };
@@ -854,7 +912,7 @@ async function acceptClaudeRequestMarker(input, root = stateRoot()) {
   const parsed = parseRequestMarker(input);
   if (!parsed) return { status: 'no_marker' };
 
-  const session = hookSession(root);
+  const session = resolvePendingRequestSession(input, parsed, root);
   const pending = session && session.pending_request ? session.pending_request : null;
   if (!session || !pending || !pending.request_id) {
     return { status: 'invalid', request_id: '', reason: 'pending_request_not_found' };
@@ -1347,7 +1405,7 @@ function usage() {
   xmux codex sessions [--json]
   xmux codex ensure-hooks [--json]
   xmux codex status [--to <name>]
-  xmux codex send [--to <name>] [--prompt <text>|--stdin|--prompt-file <path>] [--clear] [--no-enter] [--json]
+  xmux codex send [--to <name>] [--prompt <text>|--stdin] [--clear] [--no-enter] [--json]
   xmux codex stop --name <name>
   xmux codex pane-run --name <name> [-- <codex args...>]
   xmux codex hook user-prompt|stop`);
@@ -1397,6 +1455,8 @@ module.exports = {
   sendRequestToSession,
   socketPath,
   parseResponseMarker,
+  resolvePendingResponseSession,
+  resolvePendingRequestSession,
 };
 
 if (require.main === module) {

@@ -161,7 +161,7 @@ Harness state:
 Important files:
 
 ```text
-sessions/<session>.json
+sessions/<role>--<session>.json
 requests/<request_id>.json
 events.jsonl
 ```

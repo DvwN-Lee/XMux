@@ -20,6 +20,10 @@ const {
   doctorClaude,
   removeClaude,
 } = require('../claude/setup');
+const {
+  legacySessionResidue,
+  migrateLegacySessions,
+} = require('./session-state');
 
 const HOOK_TAG_KEY = 'XMUX_HOOK_TAG';
 const CODEX_HOOK_TAG_VALUE = 'xmux-codex-harness';
@@ -231,6 +235,7 @@ function legacyCodexAgentResidue(opts = {}) {
 function legacyDiagnostics(opts = {}) {
   const project = opts.project ? abs(opts.project) : projectRoot();
   const codexHomeDir = codexHomeFromOpts(opts);
+  const stateRoot = path.join(project, '.codex', 'xmux');
   const issues = [];
   const warnings = [];
   const notes = [];
@@ -259,6 +264,9 @@ function legacyDiagnostics(opts = {}) {
   if (dirHasEntries(activeTeams)) warnings.push(`legacy active team state remains at ${activeTeams}`);
   if (dirHasEntries(projectTeams)) warnings.push(`legacy project team state remains at ${projectTeams}`);
   if (dirHasEntries(projectArchive)) warnings.push(`legacy project archives remain at ${projectArchive}; use cleanup-legacy --purge-archive to remove them`);
+  for (const item of legacySessionResidue(stateRoot)) {
+    warnings.push(`legacy ${item.role} session state remains at ${item.path}; cleanup-legacy migrates it to sessions/<role>--<name>.json`);
+  }
 
   const codexConfig = path.join(codexHomeDir, 'config.toml');
   for (const match of fileContains(codexConfig, [
@@ -327,6 +335,7 @@ function cleanupAgentsLegacySkills(opts = {}) {
 function cleanupLegacy(opts = {}) {
   const diagnostics = legacyDiagnostics(opts);
   const removed = [];
+  const migrated = [];
   const warnings = [...diagnostics.issues, ...diagnostics.warnings];
   if (diagnostics.issues.length && !opts.force && !opts.dry_run) {
     if (!opts.quiet) {
@@ -357,6 +366,13 @@ function cleanupLegacy(opts = {}) {
   if (codexResidue.hooks) removed.push(path.join(codexResidue.project, '.codex', 'hooks.json'));
 
   const project = opts.project ? abs(opts.project) : projectRoot();
+  const sessionMigration = migrateLegacySessions(path.join(project, '.codex', 'xmux'), {
+    dry_run: opts.dry_run,
+    removeLegacy: true,
+  });
+  migrated.push(...sessionMigration.migrated);
+  removed.push(...sessionMigration.removed);
+  warnings.push(...sessionMigration.warnings);
   removePathIfPresent(path.join(project, '.codex', 'xmux', 'teams'), opts, removed);
   const archive = path.join(project, '.codex', 'xmux', 'archive');
   if (opts.purge_archive) removePathIfPresent(archive, opts, removed);
@@ -365,6 +381,9 @@ function cleanupLegacy(opts = {}) {
   if (!opts.quiet) {
     const prefix = opts.dry_run ? '[DRY-RUN]' : '[OK]';
     console.log(`${prefix} XMux legacy cleanup`);
+    for (const item of migrated) {
+      console.log(`  - ${opts.dry_run ? 'would migrate' : 'migrated'} ${item.role}:${item.name} -> ${item.to}`);
+    }
     if (removed.length) for (const item of removed) console.log(`  - ${opts.dry_run ? 'would remove' : 'removed'} ${item}`);
     else console.log('  - no removable legacy state found');
     for (const warning of warnings) console.log(`  - [WARN] ${warning}`);
@@ -519,6 +538,16 @@ async function main(argv = process.argv.slice(2)) {
   if (opts.project) codexArgs.push('--project', opts.project);
   if (opts.ref) codexArgs.push('--ref', opts.ref);
   codexArgs.push('--xmux-install-dir', xmuxInstallDir);
+  const project = opts.project ? abs(opts.project) : projectRoot();
+  const sessionMigration = migrateLegacySessions(path.join(project, '.codex', 'xmux'), {
+    dry_run: opts.dry_run,
+  });
+  if (!opts.quiet && (sessionMigration.migrated.length || sessionMigration.warnings.length)) {
+    for (const item of sessionMigration.migrated) {
+      console.log(`${opts.dry_run ? '[DRY-RUN]' : '[OK]'} ${opts.dry_run ? 'Would migrate' : 'Migrated'} ${item.role}:${item.name} -> ${item.to}`);
+    }
+    for (const warning of sessionMigration.warnings) console.log(`[WARN] ${warning}`);
+  }
   const codexConfig = opts.without_codex ? 0 : codexSetupMain(codexArgs);
   const codexHooks = opts.without_codex ? 0 : await setupCodexHooks(opts, xmuxInstallDir);
   const codex = codexConfig || codexHooks;

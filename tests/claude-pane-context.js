@@ -6,6 +6,7 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { readUnifiedSession, writeUnifiedSession } = require("../src/xmux/session-state");
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "xmux-claude-context-"));
 const fakeBin = path.join(tempRoot, "bin");
@@ -47,15 +48,13 @@ process.env.PATH = `${fakeBin}${path.delimiter}${process.env.PATH || ""}`;
 process.env.XMUX_STATE_DIR = tempRoot;
 delete process.env.TMUX_PANE;
 
-const codexSessionsDir = path.join(tempRoot, "codex", "sessions");
-fs.mkdirSync(codexSessionsDir, { recursive: true });
-fs.writeFileSync(path.join(codexSessionsDir, "dev.json"), JSON.stringify({
+writeUnifiedSession("codex", {
   schema: "xmux.codex.session.v1",
   name: "dev",
   active: true,
   pane: "%404",
   socket_path: "/tmp/xmux-codex-test-dev.sock",
-}, null, 2), "utf8");
+}, tempRoot);
 
 const {
   decorateSessionRuntime,
@@ -63,9 +62,7 @@ const {
   resolveCodexPaneContext,
 } = require("../src/claude/cli");
 
-const claudeSessionsDir = path.join(tempRoot, "claude", "sessions");
 const claudeRequestsDir = path.join(tempRoot, "claude", "requests");
-fs.mkdirSync(claudeSessionsDir, { recursive: true });
 fs.mkdirSync(claudeRequestsDir, { recursive: true });
 
 function writeJson(filePath, data) {
@@ -92,12 +89,12 @@ assert.deepEqual(resolveCodexPaneContext(tempRoot), {
   referencePaneSource: "codex-session-state",
 });
 
-fs.writeFileSync(path.join(codexSessionsDir, "other.json"), JSON.stringify({
+writeUnifiedSession("codex", {
   schema: "xmux.codex.session.v1",
   name: "other",
   active: true,
   pane: "%405",
-}, null, 2), "utf8");
+}, tempRoot);
 assert.equal(resolveCodexPaneContext(tempRoot).reason, "ambiguous_codex_session_without_tmux_context");
 
 const stale = decorateSessionRuntime({
@@ -122,7 +119,7 @@ const inactive = decorateSessionRuntime({
 assert.equal(inactive.active, false);
 assert.equal(inactive.runtime_status, "inactive");
 
-writeJson(path.join(claudeSessionsDir, "cleanup.json"), {
+writeUnifiedSession("claude", {
   schema: "xmux.claude.session.v1",
   name: "cleanup",
   active: true,
@@ -131,7 +128,7 @@ writeJson(path.join(claudeSessionsDir, "cleanup.json"), {
   pane_launch_id: "launch-cleanup",
   pane: "%401",
   socket_path: path.join(tempRoot, "cleanup.sock"),
-});
+}, tempRoot);
 writeJson(path.join(claudeRequestsDir, "req-exit.json"), {
   schema: "xmux.claude.request.v2",
   request_id: "req-exit",
@@ -148,7 +145,7 @@ const failedRequest = readJson(path.join(claudeRequestsDir, "req-exit.json"));
 assert.equal(failedRequest.status, "failed");
 assert.equal(failedRequest.error, "session exited before response");
 
-writeJson(path.join(claudeSessionsDir, "responded.json"), {
+writeUnifiedSession("claude", {
   schema: "xmux.claude.session.v1",
   name: "responded",
   active: true,
@@ -157,7 +154,7 @@ writeJson(path.join(claudeSessionsDir, "responded.json"), {
   pane_launch_id: "launch-responded",
   pane: "%401",
   socket_path: path.join(tempRoot, "responded.sock"),
-});
+}, tempRoot);
 writeJson(path.join(claudeRequestsDir, "req-responded.json"), {
   schema: "xmux.claude.request.v2",
   request_id: "req-responded",
@@ -170,7 +167,7 @@ const respondedRequest = readJson(path.join(claudeRequestsDir, "req-responded.js
 assert.equal(respondedRequest.status, "responded");
 assert.equal(respondedRequest.failed_at, undefined);
 
-writeJson(path.join(claudeSessionsDir, "signaled.json"), {
+writeUnifiedSession("claude", {
   schema: "xmux.claude.session.v1",
   name: "signaled",
   active: true,
@@ -180,7 +177,7 @@ writeJson(path.join(claudeSessionsDir, "signaled.json"), {
   pane_launch_id: "launch-signaled",
   pane: "%401",
   socket_path: path.join(tempRoot, "signaled.sock"),
-});
+}, tempRoot);
 writeJson(path.join(claudeRequestsDir, "req-outbound.json"), {
   schema: "xmux.claude.request.v2",
   request_id: "req-outbound",
@@ -195,7 +192,7 @@ assert.equal(signaled.active_outbound_request, undefined);
 assert.equal(signaled.pending_response, undefined);
 assert.equal(readJson(path.join(claudeRequestsDir, "req-outbound.json")).status, "failed");
 
-writeJson(path.join(claudeSessionsDir, "idle.json"), {
+writeUnifiedSession("claude", {
   schema: "xmux.claude.session.v1",
   name: "idle",
   active: true,
@@ -203,7 +200,7 @@ writeJson(path.join(claudeSessionsDir, "idle.json"), {
   pane_launch_id: "launch-idle",
   pane: "%401",
   socket_path: path.join(tempRoot, "idle.sock"),
-});
+}, tempRoot);
 const idle = finalizePaneRunSessionExit("idle", tempRoot, { status: 0 }, { launch: "launch-idle" });
 assert.equal(idle.active, false);
 assert.equal(idle.exit_code, 0);
@@ -212,7 +209,7 @@ assert.equal(idle.active_request, undefined);
 assert.equal(idle.active_outbound_request, undefined);
 assert.equal(idle.pending_response, undefined);
 
-writeJson(path.join(claudeSessionsDir, "missing-request.json"), {
+writeUnifiedSession("claude", {
   schema: "xmux.claude.session.v1",
   name: "missing-request",
   active: true,
@@ -221,12 +218,12 @@ writeJson(path.join(claudeSessionsDir, "missing-request.json"), {
   pane_launch_id: "launch-missing",
   pane: "%401",
   socket_path: path.join(tempRoot, "missing-request.sock"),
-});
+}, tempRoot);
 const missingRequest = finalizePaneRunSessionExit("missing-request", tempRoot, { status: 0 }, { launch: "launch-missing" });
 assert.equal(missingRequest.active, false);
 assert.equal(missingRequest.active_request, undefined);
 
-writeJson(path.join(claudeSessionsDir, "mismatch.json"), {
+writeUnifiedSession("claude", {
   schema: "xmux.claude.session.v1",
   name: "mismatch",
   active: true,
@@ -235,7 +232,7 @@ writeJson(path.join(claudeSessionsDir, "mismatch.json"), {
   pane_launch_id: "launch-current",
   pane: "%404",
   socket_path: path.join(tempRoot, "mismatch.sock"),
-});
+}, tempRoot);
 writeJson(path.join(claudeRequestsDir, "req-mismatch.json"), {
   schema: "xmux.claude.request.v2",
   request_id: "req-mismatch",
@@ -244,10 +241,10 @@ writeJson(path.join(claudeRequestsDir, "req-mismatch.json"), {
 });
 const ignored = finalizePaneRunSessionExit("mismatch", tempRoot, { status: 0 }, { launch: "launch-old" });
 assert.equal(ignored.exit_ignored, true);
-assert.equal(readJson(path.join(claudeSessionsDir, "mismatch.json")).active, true);
+assert.equal(readUnifiedSession("claude", "mismatch", tempRoot).active, true);
 assert.equal(readJson(path.join(claudeRequestsDir, "req-mismatch.json")).status, "prepared");
 
-writeJson(path.join(claudeSessionsDir, "ready-clears.json"), {
+writeUnifiedSession("claude", {
   schema: "xmux.claude.session.v1",
   name: "ready-clears",
   active: false,
@@ -258,7 +255,7 @@ writeJson(path.join(claudeSessionsDir, "ready-clears.json"), {
   socket_removed_at: "2026-05-21T00:00:00.000Z",
   pane_killed_at: "2026-05-21T00:00:00.000Z",
   pane_exited_at: "2026-05-21T00:00:00.000Z",
-});
+}, tempRoot);
 const hookResult = spawnSync(process.execPath, [
   path.join(__dirname, "..", "src", "claude", "cli.js"),
   "hook",
@@ -274,7 +271,7 @@ const hookResult = spawnSync(process.execPath, [
   },
 });
 assert.equal(hookResult.status, 0, hookResult.stderr || hookResult.stdout);
-const readyClears = readJson(path.join(claudeSessionsDir, "ready-clears.json"));
+const readyClears = readUnifiedSession("claude", "ready-clears", tempRoot);
 assert.equal(readyClears.active, true);
 assert.equal(readyClears.pane_launch_id, "launch-ready");
 assert.equal(readyClears.exited_at, undefined);

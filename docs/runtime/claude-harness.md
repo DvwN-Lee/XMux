@@ -17,7 +17,8 @@ $xmux-claude
 ```
 
 Normal mode treats the rest of the prompt as synthesis instructions. Codex builds
-a Claude-facing prompt from current context and sends that generated artifact.
+a Claude-facing prompt from current context and sends it through
+`xmux claude send`.
 
 Raw mode is explicit:
 
@@ -45,6 +46,13 @@ xmux codex stop --name <lead-session>
 metadata updates under `<project>/.codex/xmux/claude`, and volatile prompt body
 handoff through pane-run memory. It verifies the global Claude skill/hook
 integration and ensures the named Claude Code TUI pane exists before sending.
+`--title` labels the request in XMux metadata and status output; it is not part
+of the pane-visible Claude prompt.
+
+Session state lives in the unified `<project>/.codex/xmux/sessions/`
+collection as `codex--<name>.json` and `claude--<name>.json`. These files share
+one schema but remain one file per side, preserving single-writer-per-file
+ownership.
 
 ## Hooks
 

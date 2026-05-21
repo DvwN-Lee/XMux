@@ -7,6 +7,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { main: claudeSetupMain } = require('./setup');
+const {
+  listUnifiedSessions,
+  readUnifiedSession,
+  unifiedSessionPath,
+  writeLegacySessionMirror,
+  writeUnifiedSession,
+} = require('../xmux/session-state');
 
 const SCHEMA_SESSION = 'xmux.claude.session.v1';
 const SCHEMA_REQUEST = 'xmux.claude.request.v2';
@@ -115,11 +122,7 @@ function codexRoot(root = stateRoot()) {
 }
 
 function sessionsDir(root = stateRoot()) {
-  return path.join(claudeRoot(root), 'sessions');
-}
-
-function codexSessionsDir(root = stateRoot()) {
-  return path.join(codexRoot(root), 'sessions');
+  return path.join(root, 'sessions');
 }
 
 function requestsDir(root = stateRoot()) {
@@ -243,7 +246,7 @@ function appendEvent(event, data = {}, root = stateRoot()) {
 }
 
 function sessionPath(name, root = stateRoot()) {
-  return path.join(sessionsDir(root), `${safeComponent(name, 'session')}.json`);
+  return unifiedSessionPath('claude', name, root);
 }
 
 function requestPath(id, root = stateRoot()) {
@@ -263,7 +266,8 @@ function readSession(name, root = stateRoot()) {
 }
 
 function writeSession(session, root = stateRoot()) {
-  writeJson(sessionPath(session.name, root), session);
+  writeUnifiedSession('claude', session, root);
+  writeLegacySessionMirror('claude', session, root);
 }
 
 function clearSessionExitMarkers(session) {
@@ -274,10 +278,8 @@ function clearSessionExitMarkers(session) {
 
 function listSessions(root = stateRoot()) {
   ensureDir(sessionsDir(root));
-  return fs.readdirSync(sessionsDir(root))
-    .filter((name) => name.endsWith('.json'))
-    .map((name) => readJson(path.join(sessionsDir(root), name), null))
-    .filter((item) => item && typeof item === 'object')
+  return listUnifiedSessions(root)
+    .filter((item) => item.role === 'claude')
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
@@ -345,18 +347,7 @@ function readStdinRequired() {
 function readPrompt(opts, root = stateRoot()) {
   if (opts.stdin) return readStdinRequired();
   if (opts.prompt !== undefined) return String(opts.prompt);
-  if (opts['prompt-file']) {
-    const input = path.resolve(expandUser(opts['prompt-file']));
-    const allowedDir = path.resolve(requestsDir(root));
-    const real = fs.realpathSync(input);
-    const stat = fs.lstatSync(input);
-    if (stat.isSymbolicLink()) throw new Error('--prompt-file must not be a symlink');
-    if (!real.startsWith(`${allowedDir}${path.sep}`)) {
-      throw new Error(`--prompt-file must be inside ${allowedDir}`);
-    }
-    return fs.readFileSync(real, 'utf8');
-  }
-  throw new Error('provide --prompt, --stdin, or --prompt-file');
+  throw new Error('provide --prompt or --stdin');
 }
 
 function shellQuote(value) {
@@ -456,27 +447,17 @@ function socketPathExists(sock) {
 }
 
 function listCodexSessions(root = stateRoot()) {
-  try {
-    return fs.readdirSync(codexSessionsDir(root))
-      .filter((name) => name.endsWith('.json'))
-      .map((name) => readJson(path.join(codexSessionsDir(root), name), null))
-      .filter((item) => item && typeof item === 'object')
-      .sort((a, b) => {
-        const left = Date.parse(a.updated_at || a.created_at || '') || 0;
-        const right = Date.parse(b.updated_at || b.created_at || '') || 0;
-        return right - left;
-      });
-  } catch (_) {
-    return [];
-  }
+  return listUnifiedSessions(root)
+    .filter((item) => item.role === 'codex')
+    .sort((a, b) => {
+      const left = Date.parse(a.updated_at || a.created_at || '') || 0;
+      const right = Date.parse(b.updated_at || b.created_at || '') || 0;
+      return right - left;
+    });
 }
 
 function readCodexSession(name, root = stateRoot()) {
-  try {
-    return readJson(path.join(codexSessionsDir(root), `${safeComponent(name, 'codex_session')}.json`), null);
-  } catch (_) {
-    return null;
-  }
+  return readUnifiedSession('codex', name, root);
 }
 
 function codexContextErrorMessage(context, action) {
@@ -2366,8 +2347,8 @@ function usage() {
   xmux claude sessions [--json]
   xmux claude start [--name <name>] [--split]
   xmux claude ensure-hooks [--json]
-  xmux claude send --trigger xmux-claude|xmux-claude! [--to <name>] [--title <text>] [--prompt <text>|--stdin|--prompt-file <path>] [--wait] [--json]
-  xmux claude send-codex --trigger xmux-codex [--from <name>] [--to <codex-session>] [--title <text>] [--prompt <text>|--stdin|--prompt-file <path>] [--json]
+  xmux claude send --trigger xmux-claude|xmux-claude! [--to <name>] [--title <text>] [--prompt <text>|--stdin] [--wait] [--json]
+  xmux claude send-codex --trigger xmux-codex [--from <name>] [--to <codex-session>] [--title <text>] [--prompt <text>|--stdin] [--json]
   xmux claude trigger-codex [--to <name>] [--prompt <text>|--stdin] [--json]
   xmux claude read <request_id> [--json]
   xmux claude status [--to <name>]

@@ -136,7 +136,6 @@ case "${words[2]:-}" in
         "--name[session name]:session:" \
         "--prompt[prompt text]:text:" \
         "--stdin[read prompt from stdin]" \
-        "--prompt-file[read prompt from file]:file:_files" \
         "--clear[clear the current prompt before injection]" \
         "--no-enter[stage prompt without pressing enter]" \
         "--json[write JSON output]" \
