@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.3-beta.4 - 2026-05-22
+
+- Delayed the Claude pane Enter key after bracketed paste injection so current
+  Claude Code TUI versions submit XMux requests instead of leaving them staged
+  in the input box.
+- Preserved the `XMUX_CLAUDE_ENTER_DELAY` override while keeping the shorter
+  delay for non-bracketed prompt injection.
+
 ## 2.0.3-beta.3 - 2026-05-21
 
 - Moved Claude and Codex session records into a unified
