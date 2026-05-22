@@ -3,8 +3,9 @@ Back to [README](../../README.md)
 # XMux Codex Lead
 
 XMux starts Codex as the lead process through `xmux codex pane-run`. Claude Code
-is the only supported communication target in the hook harness model, and Codex
-reaches it only through the `xmux claude ...` entrypoint.
+is the hook-harness peer target through `xmux claude ...`, and Codex-to-Codex
+operator sends use the explicit `$xmux-send` skill trigger backed by
+`xmux send-pane`.
 
 ## Runtime Paths
 
@@ -100,6 +101,24 @@ Raw forwarding is allowed only through the explicit bang trigger:
 ```text
 $xmux-claude! Send this exact prompt to Claude.
 ```
+
+For Codex-to-Codex messaging, use explicit send triggers:
+
+```text
+$xmux-send review Ask this session to isolate the failing test and report a patch plan.
+$xmux-send! api/review Send this exact prompt body to the target session.
+```
+
+`$xmux-send` synthesizes a target-facing prompt and dispatches it through:
+
+```zsh
+xmux send-pane <target> --json -- "<generated prompt>"
+```
+
+`$xmux-send!` forwards the literal body with the same command shape. Targets
+can use current-project session names or `<project>/<session>` for cross-project
+routing. Self-send/busy overrides require explicit user intent for `--force`.
+The sending turn does not wait for or summarize target responses.
 
 ## Architecture
 

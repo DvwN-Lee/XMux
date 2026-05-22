@@ -2,7 +2,8 @@
 
 XMux is a Codex-led Claude Code harness. The user starts Codex through `xmux`,
 then explicitly invokes `$xmux-claude` when Codex should synthesize a
-Claude-facing request.
+Claude-facing request, or `$xmux-send` when Codex should send a prompt to
+another XMux Codex session.
 
 The current Claude harness path does not use MCP, teammate routing, or pane paste
 injection. Codex talks to Claude through the single `xmux claude ...` entrypoint,
@@ -70,6 +71,24 @@ Use raw mode only with the explicit bang trigger:
 $xmux-claude! Send this exact text to Claude.
 ```
 
+For Codex-to-Codex pane sends, use the explicit send trigger:
+
+```text
+$xmux-send review Ask this session to focus on reproducing the failing test.
+$xmux-send! api/review Send this exact prompt body to the target session.
+```
+
+`$xmux-send` builds a target-facing prompt from context and then calls:
+
+```bash
+xmux send-pane <target> --json -- "<generated prompt>"
+```
+
+`$xmux-send!` forwards the literal body with the same command shape. Targets may
+be a session name in the current project or `<project>/<session>` for
+cross-project routing. The sending turn does not wait for or summarize target
+responses.
+
 ## Claude Harness
 
 Primary commands:
@@ -112,6 +131,7 @@ Global setup is limited to protocol assets and hooks:
 ~/.codex/hooks.json
 ~/.codex/rules/default.rules
 ~/.agents/skills/xmux-claude/
+~/.agents/skills/xmux-send/
 ~/.claude/settings.json
 ~/.claude/skills/xmux-codex/
 ```

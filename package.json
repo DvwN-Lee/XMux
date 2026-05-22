@@ -15,6 +15,7 @@
     "dist/claude",
     "dist/xmux",
     "assets/codex/skills/xmux-claude",
+    "assets/codex/skills/xmux-send",
     "assets/claude/skills/xmux-codex",
     "runtime/codex",
     "runtime/claude",

@@ -22,6 +22,8 @@ packaging/homebrew/
 tests/*
 !tests/codex-setup-hooks.js
 !tests/codex-setup-path.js
+!tests/codex-setup-skills.js
+!tests/xmux-setup-cleanup-skills.js
 !tests/codex-hook-resolution.js
 !tests/claude-pane-context.js
 !tests/claude-prompt-input.js

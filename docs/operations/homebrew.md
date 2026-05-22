@@ -27,6 +27,7 @@ $(brew --prefix)/opt/xmux/libexec/
     tmux/tmux.conf
   assets/
     codex/skills/xmux-claude/
+    codex/skills/xmux-send/
     claude/skills/xmux-codex/SKILL.md
   src/
     xmux/setup.js
@@ -66,7 +67,8 @@ xmux doctor-xmux
 
 `xmux setup-xmux` owns only XMux-managed global Codex and Claude changes:
 `~/.codex/config.toml`, `~/.codex/hooks.json`, `~/.codex/rules/default.rules`,
-`~/.agents/skills/xmux-claude`, `~/.claude/settings.json`, and
+`~/.agents/skills/xmux-claude`, `~/.agents/skills/xmux-send`,
+`~/.claude/settings.json`, and
 `~/.claude/skills/xmux-codex`. It also removes the legacy XMux-managed Claude
 Code theme if that theme was previously installed or selected. Runtime state
 remains project-local under `<project>/.codex/xmux`.

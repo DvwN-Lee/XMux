@@ -2,8 +2,8 @@ Back to [README](../../README.md)
 
 # XMux Skills
 
-XMux carries only the protocol assets required for the Codex-Claude hook
-harness. Skills are not a separate public install surface in the 2.x harness.
+XMux carries only the protocol assets required for its Codex/Claude harness
+surfaces. Skills are not a separate public install surface in the 2.x model.
 
 Run the single integration command:
 
@@ -15,6 +15,7 @@ This refreshes XMux-managed global assets:
 
 ```text
 ~/.agents/skills/xmux-claude/
+~/.agents/skills/xmux-send/
 ~/.claude/skills/xmux-codex/
 ```
 
@@ -22,6 +23,7 @@ The Codex skill is sourced from the installed bundle:
 
 ```text
 <XMUX_INSTALL_DIR>/assets/codex/skills/xmux-claude/
+<XMUX_INSTALL_DIR>/assets/codex/skills/xmux-send/
 ```
 
 The Claude skill is sourced from:
@@ -29,6 +31,13 @@ The Claude skill is sourced from:
 ```text
 <XMUX_INSTALL_DIR>/assets/claude/skills/xmux-codex/SKILL.md
 ```
+
+Codex skill triggers are explicit-first-token only:
+
+- `$xmux-claude` / `$xmux-claude!` for Claude harness routing.
+- `$xmux-send <target> <instruction>` / `$xmux-send! <target> <literal prompt>`
+  for Codex-to-Codex sends through `xmux send-pane <target> --json -- ...`.
+  Use `<project>/<session>` for cross-project targets.
 
 Both destinations are protected by `.xmux-managed-skill` marker files. Setup
 refuses to overwrite a user-created asset with the same name unless the

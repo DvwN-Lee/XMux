@@ -30,6 +30,7 @@ const CODEX_HOOK_TAG_VALUE = 'xmux-codex-harness';
 const LEGACY_CODEX_AGENT_MARKER = '# XMUX_MANAGED_AGENT';
 const LEGACY_CODEX_AGENT_MANIFEST = '.xmux-agents.json';
 const LEGACY_CODEX_AGENT_NAMES = ['xmux_claude.toml', 'xmux_copilot.toml', 'xmux_gemini.toml'];
+const CURRENT_CODEX_SKILLS = new Set(['xmux-claude', 'xmux-send']);
 
 function expandUser(value) {
   const text = String(value || '');
@@ -258,7 +259,7 @@ function legacyDiagnostics(opts = {}) {
   warnings.push(...legacyCodexAgents.warnings);
   if (dirHasEntries(agentsSkills)) {
     for (const name of fs.readdirSync(agentsSkills).sort()) {
-      if (name.startsWith('xmux-') && name !== 'xmux-claude') warnings.push(`legacy .agents XMux skill remains at ${path.join(agentsSkills, name)}`);
+      if (name.startsWith('xmux-') && !CURRENT_CODEX_SKILLS.has(name)) warnings.push(`legacy .agents XMux skill remains at ${path.join(agentsSkills, name)}`);
     }
   }
   if (dirHasEntries(activeTeams)) warnings.push(`legacy active team state remains at ${activeTeams}`);
@@ -320,7 +321,7 @@ function cleanupAgentsLegacySkills(opts = {}) {
       continue;
     }
     const marker = path.join(candidate, '.xmux-managed-skill');
-    const isCurrent = name === 'xmux-claude';
+    const isCurrent = CURRENT_CODEX_SKILLS.has(name);
     const removable = stat.isSymbolicLink() || (!isCurrent && stat.isDirectory() && fs.existsSync(marker));
     if (removable) {
       if (!opts.dry_run) fs.rmSync(candidate, { recursive: true, force: true });
