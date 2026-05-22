@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.3 - 2026-05-22
+
+- Promoted the 2.0.3 beta line to stable with unified XMux session state,
+  hardened Codex hook routing, Claude pane submit reliability fixes, and
+  socket-backed `xmux send-pane` support for Codex-to-Codex operator sends.
+- Preserved the supported prompt input surface around `--prompt` and `--stdin`
+  while keeping stale legacy migration and cleanup paths guarded.
+
 ## 2.0.3-beta.5 - 2026-05-22
 
 - Added `xmux send-pane` for socket-backed Codex-to-Codex operator sends
