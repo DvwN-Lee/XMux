@@ -416,7 +416,7 @@ function parseArgs(argv) {
       continue;
     }
     const key = arg.slice(2);
-    if (['json', 'stdin', 'no-enter', 'no-bracketed-paste', 'quiet', 'clear'].includes(key)) {
+    if (['json', 'stdin', 'no-enter', 'no-bracketed-paste', 'quiet', 'clear', 'force'].includes(key)) {
       out[key] = true;
       continue;
     }
@@ -497,6 +497,9 @@ async function sendPromptToSession(options = {}) {
   if (!sock || !fs.existsSync(sock)) {
     return { ok: false, status: 'unavailable', error: `Codex pane socket is not ready: ${sock || '(none)'}` };
   }
+  if (session && !options.force && (session.active_request || session.pending_request || session.pending_response)) {
+    return { ok: false, status: 'peer_busy', error: 'Codex session already has an active XMux cycle; use --force to override' };
+  }
   const response = await socketRequest(sock, {
     type: 'prompt',
     prompt,
@@ -505,7 +508,12 @@ async function sendPromptToSession(options = {}) {
     clear: Boolean(options.clear),
   }, Number(options.timeoutMs || process.env.XMUX_CODEX_SOCKET_TIMEOUT_MS || 30000));
   if (!response.ok) return { ok: false, status: 'failed', error: response.error || 'socket injection failed' };
-  appendEvent('codex.prompt.injected', { session: name, pane: session && session.pane ? session.pane : '' }, root);
+  appendEvent('codex.prompt.injected', {
+    session: name,
+    pane: session && session.pane ? session.pane : '',
+    origin: options.origin || 'codex-send',
+    forced: Boolean(options.force),
+  }, root);
   return { ok: true, status: 'sent', session: name, pane: session && session.pane ? session.pane : '', socket_path: sock };
 }
 
@@ -1306,6 +1314,8 @@ async function cmdSend(opts) {
     enter: !opts['no-enter'],
     bracketedPaste: !opts['no-bracketed-paste'],
     clear: Boolean(opts.clear),
+    force: Boolean(opts.force),
+    origin: opts.origin || process.env.XMUX_CODEX_SEND_ORIGIN || 'codex-send',
     allowControl: Boolean(controlKey),
     timeoutMs: opts['socket-timeout'] || 30000,
   });
@@ -1405,7 +1415,7 @@ function usage() {
   xmux codex sessions [--json]
   xmux codex ensure-hooks [--json]
   xmux codex status [--to <name>]
-  xmux codex send [--to <name>] [--prompt <text>|--stdin] [--clear] [--no-enter] [--json]
+  xmux codex send [--to <name>] [--prompt <text>|--stdin] [--clear] [--no-enter] [--force] [--json]
   xmux codex stop --name <name>
   xmux codex pane-run --name <name> [-- <codex args...>]
   xmux codex hook user-prompt|stop`);

@@ -9,6 +9,7 @@ commands=(
   "attach:attach to an XMux tmux session"
   "stop:stop an XMux-owned tmux session"
   "sessions:list XMux tmux sessions"
+  "send-pane:send text to an XMux Codex session"
   "setup-xmux:configure global Codex and Claude integration"
   "cleanup-legacy:remove legacy XMux 1.x state after review"
   "doctor-xmux:inspect XMux integration"
@@ -103,6 +104,19 @@ case "${words[2]:-}" in
   stop)
     _arguments -C $common_options "1:session:_xmux_session_names"
     ;;
+  send-pane)
+    _arguments -C \
+      $common_options \
+      "--to[target session name]:session:_xmux_session_names" \
+      "--prompt[prompt text]:text:" \
+      "--stdin[read prompt from stdin]" \
+      "--clear[clear the current prompt before injection]" \
+      "--no-enter[stage prompt without pressing enter]" \
+      "--force[allow self-send and busy-target override]" \
+      "--json[write JSON output]" \
+      "1:session:_xmux_session_names" \
+      "2:prompt text:"
+    ;;
   claude)
     if (( CURRENT == 3 )); then
       _arguments -C \
@@ -138,6 +152,7 @@ case "${words[2]:-}" in
         "--stdin[read prompt from stdin]" \
         "--clear[clear the current prompt before injection]" \
         "--no-enter[stage prompt without pressing enter]" \
+        "--force[allow busy-target override]" \
         "--json[write JSON output]" \
         "--socket-timeout[socket timeout milliseconds]:milliseconds:" \
         "--codex-cmd[Codex TUI command for pane-run]:command:"

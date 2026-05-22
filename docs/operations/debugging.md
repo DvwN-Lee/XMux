@@ -55,6 +55,18 @@ Inspect generated state under:
 .codex/xmux/codex/events.jsonl
 ```
 
+For Codex-to-Codex operator checks, use `xmux send-pane` (socket-backed via
+`xmux codex send`):
+
+```zsh
+xmux send-pane <session> -- "diagnostic prompt"
+xmux send-pane <project>/<session> --clear -- "replace prompt and send"
+xmux send-pane --to <session> --stdin
+```
+
+`xmux send-pane` targets only XMux-managed Codex sessions and blocks self-send
+or busy targets unless `--force` is passed.
+
 ## Failure Modes
 
 - `transport_unavailable`: the split-pane Claude TUI transport could not accept
@@ -78,7 +90,9 @@ invalid for Codex-to-Claude work:
 - MCP request tools such as `send_to_teammate` or `write_to_lead`
 - teammate recovery commands
 
-Those paths bypass request ids, nonce validation, and hook state.
+Those paths bypass request ids, nonce validation, and hook state. `xmux
+send-pane` is for Codex-to-Codex debugging only and is not a Claude transport
+substitute.
 
 ## Reporting
 

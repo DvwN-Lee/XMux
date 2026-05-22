@@ -83,6 +83,7 @@ Usage:
   xmux attach <session>
   xmux stop <session>
   xmux sessions
+  xmux send-pane <session> "<text>" [--clear] [--no-enter] [--force] [--json]
   xmux claude <args...>
   xmux codex <args...>
   xmux setup-xmux [--with-skills|--without-skills] [--refresh] [--dry-run] [--without-codex] [--without-claude]
@@ -669,6 +670,151 @@ _xmux_cmd_sessions() {
   done
 }
 
+_xmux_send_pane_error() {
+  local message="$1" use_json="${2:-0}" escaped
+  if (( use_json )); then
+    escaped="${message//\\/\\\\}"
+    escaped="${escaped//\"/\\\"}"
+    escaped="${escaped//$'\n'/\\n}"
+    escaped="${escaped//$'\r'/\\r}"
+    escaped="${escaped//$'\t'/\\t}"
+    print -r -- "{\"ok\":false,\"status\":\"failed\",\"error\":\"$escaped\"}"
+  else
+    echo "error: $message" >&2
+  fi
+}
+
+_xmux_cmd_send_pane() {
+  local target="" prompt="" input_mode="" arg
+  local clear=0 no_enter=0 force=0 json=0
+  local -a passthrough
+
+  while [[ $# -gt 0 ]]; do
+    arg="$1"
+    case "$arg" in
+      --to)
+        [[ $# -ge 2 ]] || { _xmux_send_pane_error "--to requires a session name." "$json"; return 1; }
+        [[ -z "$target" ]] || { _xmux_send_pane_error "target session was provided more than once." "$json"; return 1; }
+        target="$2"
+        shift 2
+        ;;
+      --prompt)
+        [[ $# -ge 2 ]] || { _xmux_send_pane_error "--prompt requires text." "$json"; return 1; }
+        [[ -z "$input_mode" ]] || { _xmux_send_pane_error "prompt was provided more than once." "$json"; return 1; }
+        prompt="$2"
+        input_mode="prompt"
+        shift 2
+        ;;
+      --stdin)
+        [[ -z "$input_mode" ]] || { _xmux_send_pane_error "prompt was provided more than once." "$json"; return 1; }
+        input_mode="stdin"
+        shift
+        ;;
+      --clear)
+        clear=1
+        shift
+        ;;
+      --no-enter)
+        no_enter=1
+        shift
+        ;;
+      --force)
+        force=1
+        shift
+        ;;
+      --json)
+        json=1
+        shift
+        ;;
+      --)
+        shift
+        if [[ -z "$input_mode" ]]; then
+          prompt="$*"
+          input_mode="prompt"
+          shift $#
+        else
+          _xmux_send_pane_error "prompt was provided more than once." "$json"
+          return 1
+        fi
+        ;;
+      -h|--help)
+        echo "Usage: xmux send-pane <session> \"<text>\" [--clear] [--no-enter] [--force] [--json]"
+        echo "       xmux send-pane --to <session> --prompt \"<text>\" [--clear] [--no-enter] [--force] [--json]"
+        echo "       xmux send-pane --to <session> --stdin [--clear] [--no-enter] [--force] [--json]"
+        return 0
+        ;;
+      -*)
+        _xmux_send_pane_error "unknown option '$arg'" "$json"
+        return 1
+        ;;
+      *)
+        if [[ -z "$target" ]]; then
+          target="$arg"
+        elif [[ -z "$input_mode" ]]; then
+          prompt="$arg"
+          input_mode="prompt"
+        else
+          _xmux_send_pane_error "text must be quoted as a single argument." "$json"
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$target" ]] || { _xmux_send_pane_error "target session is required." "$json"; return 1; }
+  [[ -n "$input_mode" ]] || {
+    _xmux_send_pane_error "provide prompt text, --prompt, or --stdin." "$json"
+    return 1
+  }
+
+  if ! _xmux_require_tmux >/dev/null 2>&1; then
+    _xmux_send_pane_error "tmux is required." "$json"
+    return 1
+  fi
+  if ! _xmux_resolve_existing_session "$target"; then
+    _xmux_send_pane_error "XMux Codex session '$target' is not active." "$json"
+    return 1
+  fi
+
+  local raw_name="$_XMUX_RESOLVED_RAW_NAME"
+  local session_name="$_XMUX_RESOLVED_SESSION_NAME"
+  local display_name="$_XMUX_RESOLVED_DISPLAY_NAME"
+  local target_project="$_XMUX_RESOLVED_PROJECT_DIR"
+  [[ -n "$target_project" ]] || target_project="$XMUX_PROJECT_DIR"
+
+  local current_tmux_session=""
+  current_tmux_session="$(_xmux_current_tmux_session 2>/dev/null || true)"
+  if (( ! force )); then
+    if [[ -n "${TMUX_PANE:-}" && -n "$current_tmux_session" && "$current_tmux_session" == "$session_name" ]]; then
+      _xmux_send_pane_error "refusing to send into the current XMux Codex session '$display_name'; use --force to override." "$json"
+      return 1
+    fi
+    if [[ -n "${XMUX_CODEX_SESSION_NAME:-}" \
+        && "${XMUX_CODEX_SESSION_NAME}" == "$raw_name" \
+        && "${XMUX_PROJECT_DIR:A}" == "${target_project:A}" ]]; then
+      _xmux_send_pane_error "refusing to send into the current XMux Codex session '$display_name'; use --force to override." "$json"
+      return 1
+    fi
+  fi
+
+  passthrough=(send --to "$raw_name" --origin send-pane)
+  (( force )) && passthrough+=(--force)
+  (( clear )) && passthrough+=(--clear)
+  (( no_enter )) && passthrough+=(--no-enter)
+  (( json )) && passthrough+=(--json)
+  if [[ "$input_mode" == "stdin" ]]; then
+    passthrough+=(--stdin)
+  else
+    passthrough+=(--prompt "$prompt")
+  fi
+
+  XMUX_PROJECT_DIR="$target_project" \
+    XMUX_STATE_DIR="$target_project/.codex/xmux" \
+    XMUX_CODEX_SEND_ORIGIN="send-pane" \
+    _xmux_cmd_codex_harness "${passthrough[@]}"
+}
+
 _xmux_legacy_removed() {
   echo "error: $1 was removed in XMux 2.x. Use the Codex-Claude hook harness through \$xmux-claude and /xmux-codex." >&2
   return 1
@@ -711,6 +857,10 @@ xmux() {
     sessions)
       shift
       _xmux_cmd_sessions "$@"
+      ;;
+    send-pane)
+      shift
+      _xmux_cmd_send_pane "$@"
       ;;
     claude)
       shift
