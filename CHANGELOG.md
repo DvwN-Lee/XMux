@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.3-beta.5 - 2026-05-22
+
+- Added `xmux send-pane` for socket-backed Codex-to-Codex operator sends
+  between XMux-managed sessions.
+- Guarded `send-pane` against self-send and busy target sessions by default,
+  with `--force` as the explicit override.
+- Added `--json`, completion, docs, focused tests, and same-project plus
+  cross-project e2e coverage for the new send path.
+
 ## 2.0.3-beta.4 - 2026-05-22
 
 - Delayed the Claude pane Enter key after bracketed paste injection so current
