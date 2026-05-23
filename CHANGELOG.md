@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.4 - 2026-05-24
+
+- Fixed Homebrew stable Codex hook false positives for multi-line
+  `[xmux-claude-response]` markers by matching the visible first response line
+  instead of the full response body.
+- Normalized active unified session state so restarted Codex panes no longer
+  report stale terminated metadata or retain old exit markers.
+- Increased Claude bracketed-paste submit delay so current Claude Code TUI
+  versions submit XMux requests instead of leaving pasted text staged.
+- Improved `xmux send-pane` tmux resolver diagnostics for missing, unmanaged,
+  or wrong-project sessions.
+
 ## 2.0.3 - 2026-05-22
 
 - Promoted the 2.0.3 beta line to stable with unified XMux session state,
