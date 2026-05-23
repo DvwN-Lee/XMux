@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.5 - 2026-05-24
+
+- Normalized Codex and Claude stop output so inactive sessions consistently
+  report `status: "terminated"` with `terminated_at` populated.
+- Cleared stale request bookkeeping when Codex or Claude panes stop or restart,
+  preventing stale active/pending request fields from surviving into new runs.
+- Marked in-flight Claude-to-Codex requests as failed when the target Codex pane
+  stops or exits before responding, avoiding request-level zombie state.
+
 ## 2.0.4 - 2026-05-24
 
 - Fixed Homebrew stable Codex hook false positives for multi-line

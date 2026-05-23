@@ -36,6 +36,11 @@ const SESSION_EXIT_MARKER_FIELDS = [
   'pane_killed_at',
   'pane_exited_at',
 ];
+const SESSION_VOLATILE_FIELDS = [
+  'active_request',
+  'active_outbound_request',
+  'pending_response',
+];
 
 function nowTs() {
   return new Date().toISOString().replace(/(\.\d{3})\d*Z/, '$1Z');
@@ -266,13 +271,20 @@ function readSession(name, root = stateRoot()) {
 }
 
 function writeSession(session, root = stateRoot()) {
-  writeUnifiedSession('claude', session, root);
-  writeLegacySessionMirror('claude', session, root);
+  const written = writeUnifiedSession('claude', session, root);
+  writeLegacySessionMirror('claude', written, root);
+  return written;
 }
 
 function clearSessionExitMarkers(session) {
   if (!session) return session;
   for (const field of SESSION_EXIT_MARKER_FIELDS) delete session[field];
+  return session;
+}
+
+function clearSessionVolatileState(session) {
+  if (!session) return session;
+  for (const field of SESSION_VOLATILE_FIELDS) delete session[field];
   return session;
 }
 
@@ -1360,8 +1372,16 @@ function failRequest(request, status, fields = {}, root = stateRoot()) {
 
 function clearOutboundRequest(sessionName, requestId, root = stateRoot()) {
   const session = readSession(sessionName, root);
+  let changed = false;
   if (session && session.active_outbound_request === requestId) {
     delete session.active_outbound_request;
+    changed = true;
+  }
+  if (session && session.pending_response && session.pending_response.request_id === requestId) {
+    delete session.pending_response;
+    changed = true;
+  }
+  if (session && changed) {
     session.updated_at = nowTs();
     writeSession(session, root);
   }
@@ -1964,10 +1984,11 @@ function cmdStop(opts) {
       // Socket cleanup is best effort; pane runner also removes it on exit.
     }
   }
+  clearSessionVolatileState(session);
   session.updated_at = nowTs();
-  writeSession(session);
+  const written = writeSession(session);
   appendEvent('claude.session.stopped', { session: name });
-  console.log(JSON.stringify({ status: 'ok', session }, null, 2));
+  console.log(JSON.stringify({ status: 'ok', session: written }, null, 2));
   return 0;
 }
 

@@ -345,8 +345,9 @@ function readSession(name, root = stateRoot()) {
 }
 
 function writeSession(session, root = stateRoot()) {
-  writeUnifiedSession('codex', session, root);
-  writeLegacySessionMirror('codex', session, root);
+  const written = writeUnifiedSession('codex', session, root);
+  writeLegacySessionMirror('codex', written, root);
+  return written;
 }
 
 function pendingTtlMs() {
@@ -392,10 +393,21 @@ const PANE_RUN_EXIT_MARKER_FIELDS = [
   'pane_killed_at',
   'pane_exited_at',
 ];
+const SESSION_VOLATILE_FIELDS = [
+  'active_request',
+  'pending_request',
+  'pending_response',
+];
 
 function clearPaneRunExitMarkers(session = {}) {
   if (!session || typeof session !== 'object') return session;
   for (const field of PANE_RUN_EXIT_MARKER_FIELDS) delete session[field];
+  return session;
+}
+
+function clearSessionVolatileState(session = {}) {
+  if (!session || typeof session !== 'object') return session;
+  for (const field of SESSION_VOLATILE_FIELDS) delete session[field];
   return session;
 }
 
@@ -706,6 +718,53 @@ function updateClaudeRequest(id, updater, root = stateRoot()) {
   next.updated_at = nowTs();
   writeJson(file, next);
   return next;
+}
+
+const CLAUDE_REQUEST_EXIT_TERMINAL_STATUSES = new Set([
+  'responded',
+  'failed',
+  'rejected',
+  'timeout',
+  'backend_unavailable',
+  'transport_unavailable',
+  'closed',
+]);
+
+function clearClaudeOutboundRequest(sessionName, requestId, root = stateRoot()) {
+  if (!sessionName || !requestId) return;
+  try {
+    const { clearOutboundRequest } = require('../claude/cli');
+    if (typeof clearOutboundRequest === 'function') clearOutboundRequest(sessionName, requestId, root);
+  } catch (_) {
+    // Claude-side cleanup is best effort; request state is still finalized below.
+  }
+}
+
+function failClaudeRequestOnCodexExit(id, error, exitedAt, root = stateRoot()) {
+  if (!id) return { updated: false, missing: true };
+  const file = claudeRequestPath(id, root);
+  const current = readJson(file, null);
+  if (!current) return { updated: false, missing: true };
+  clearClaudeOutboundRequest(current.session || '', current.request_id || id, root);
+  if (CLAUDE_REQUEST_EXIT_TERMINAL_STATUSES.has(current.status)) {
+    return { updated: false, status: current.status };
+  }
+  current.status = 'failed';
+  current.error = error;
+  current.failed_at = exitedAt;
+  current.updated_at = nowTs();
+  writeJson(file, current);
+  return { updated: true, status: current.status };
+}
+
+function failSessionClaudeRequestsOnCodexExit(session = {}, error, exitedAt, root = stateRoot()) {
+  const requestIds = new Set();
+  if (session.active_request) requestIds.add(session.active_request);
+  if (session.pending_request && session.pending_request.request_id) requestIds.add(session.pending_request.request_id);
+  if (session.pending_response && session.pending_response.request_id) requestIds.add(session.pending_response.request_id);
+  for (const requestId of requestIds) {
+    failClaudeRequestOnCodexExit(requestId, error, exitedAt, root);
+  }
 }
 
 function buildClaudeResponseContext(request, body) {
@@ -1366,11 +1425,14 @@ function cmdStop(opts) {
       // Socket cleanup is best effort; pane runner also removes it on exit.
     }
   }
+  const stoppedAt = nowTs();
+  failSessionClaudeRequestsOnCodexExit(session, 'Codex session stopped before response', stoppedAt);
+  clearSessionVolatileState(session);
   session.active = false;
-  session.updated_at = nowTs();
-  writeSession(session);
+  session.updated_at = stoppedAt;
+  const written = writeSession(session);
   appendEvent('codex.session.stopped', { session: name });
-  console.log(JSON.stringify({ status: 'ok', session }, null, 2));
+  console.log(JSON.stringify({ status: 'ok', session: written }, null, 2));
   return 0;
 }
 
@@ -1387,6 +1449,7 @@ function cmdPaneRun(opts) {
     created_at: nowTs(),
   };
   clearPaneRunExitMarkers(session);
+  clearSessionVolatileState(session);
   session.active = true;
   session.pane = process.env.TMUX_PANE || session.pane || '';
   session.socket_path = sock;
@@ -1416,10 +1479,13 @@ function cmdPaneRun(opts) {
     },
   });
   const latest = readSession(name, root) || session;
+  const exitedAt = nowTs();
+  failSessionClaudeRequestsOnCodexExit(latest, 'Codex session exited before response', exitedAt, root);
+  clearSessionVolatileState(latest);
   latest.active = false;
-  latest.exited_at = nowTs();
+  latest.exited_at = exitedAt;
   latest.exit_code = result.status || 0;
-  latest.updated_at = nowTs();
+  latest.updated_at = exitedAt;
   writeSession(latest, root);
   appendEvent('codex.session.exited', { session: name, exit_code: latest.exit_code }, root);
   if (result.error) throw new Error(`failed to start pane runner: ${result.error.message}`);
@@ -1481,6 +1547,7 @@ module.exports = {
   sendRequestToSession,
   socketPath,
   clearPaneRunExitMarkers,
+  clearSessionVolatileState,
   parseResponseMarker,
   resolvePendingResponseSession,
   resolvePendingRequestSession,
