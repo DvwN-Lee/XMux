@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+const { clearPaneRunExitMarkers } = require("../src/codex/cli");
 const {
   SESSION_SCHEMA,
   SESSION_SCHEMA_VERSION,
@@ -78,11 +79,92 @@ assert.equal(claudeDoc.provider_session_id, "provider-session-id");
 assert.equal(claudeDoc.active_outbound_request, "legacy-outbound-id");
 assert.equal(claudeDoc.active_exchange_id, undefined);
 
+const resumed = unifiedSessionFromLegacy("codex", {
+  schema: "xmux.codex.session.v1",
+  name: "resumed",
+  active: true,
+  status: "terminated",
+  terminated_at: "2026-05-21T00:03:00.000Z",
+  updated_at: "2026-05-21T00:04:00.000Z",
+});
+assert.equal(resumed.status, "active");
+assert.equal(resumed.terminated_at, null);
+
+const draining = unifiedSessionFromLegacy("codex", {
+  schema: "xmux.codex.session.v1",
+  name: "draining",
+  active: true,
+  status: "draining",
+  updated_at: "2026-05-21T00:05:00.000Z",
+});
+assert.equal(draining.status, "draining");
+
+const inactiveOverride = unifiedSessionFromLegacy("codex", {
+  schema: "xmux.codex.session.v1",
+  name: "inactive",
+  active: false,
+  status: "active",
+  updated_at: "2026-05-21T00:06:00.000Z",
+});
+assert.equal(inactiveOverride.status, "terminated");
+assert.equal(inactiveOverride.terminated_at, "2026-05-21T00:06:00.000Z");
+
+const staleExitMarkers = {
+  name: "dev",
+  active: false,
+  status: "terminated",
+  terminated_at: "2026-05-21T00:07:00.000Z",
+  exited_at: "2026-05-21T00:07:05.000Z",
+  exit_code: 3,
+  exit_signal: "SIGTERM",
+  socket_removed_at: "2026-05-21T00:07:10.000Z",
+  pane_killed_at: "2026-05-21T00:07:15.000Z",
+  pane_exited_at: "2026-05-21T00:07:20.000Z",
+  pane: "%101",
+};
+clearPaneRunExitMarkers(staleExitMarkers);
+assert.equal(staleExitMarkers.status, undefined);
+assert.equal(staleExitMarkers.terminated_at, undefined);
+assert.equal(staleExitMarkers.exited_at, undefined);
+assert.equal(staleExitMarkers.exit_code, undefined);
+assert.equal(staleExitMarkers.exit_signal, undefined);
+assert.equal(staleExitMarkers.socket_removed_at, undefined);
+assert.equal(staleExitMarkers.pane_killed_at, undefined);
+assert.equal(staleExitMarkers.pane_exited_at, undefined);
+assert.equal(staleExitMarkers.pane, "%101");
+
 assert.deepEqual(readUnifiedSession("codex", "default", tempRoot), codexDoc);
 assert.deepEqual(listUnifiedSessions(tempRoot).map((item) => item.session_id), [
   "claude--default",
   "codex--default",
 ]);
+
+fs.writeFileSync(
+  unifiedSessionPath("codex", "raw-stale", tempRoot),
+  `${JSON.stringify({
+    schema: SESSION_SCHEMA,
+    schema_version: SESSION_SCHEMA_VERSION,
+    session_id: "codex--raw-stale",
+    role: "codex",
+    name: "raw-stale",
+    active: true,
+    status: "terminated",
+    terminated_at: "2026-05-21T00:08:00.000Z",
+    exited_at: "2026-05-21T00:08:05.000Z",
+    exit_code: 0,
+    updated_at: "2026-05-21T00:09:00.000Z",
+  })}\n`,
+  "utf8",
+);
+const normalizedStale = readUnifiedSession("codex", "raw-stale", tempRoot);
+assert.equal(normalizedStale.status, "active");
+assert.equal(normalizedStale.terminated_at, null);
+assert.equal(normalizedStale.exited_at, undefined);
+assert.equal(normalizedStale.exit_code, undefined);
+assert.equal(
+  listUnifiedSessions(tempRoot).find((item) => item.session_id === "codex--raw-stale").status,
+  "active",
+);
 
 assert.throws(
   () => unifiedSessionFromLegacy("worker", codexSession),

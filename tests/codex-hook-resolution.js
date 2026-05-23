@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const {
+  parseResponseMarker,
   resolvePendingRequestSession,
   resolvePendingResponseSession,
 } = require("../src/codex/cli");
@@ -65,6 +66,17 @@ try {
   delete process.env.XMUX_CODEX_SESSION_NAME;
   delete process.env.XMUX_TEAM;
   assert.equal(resolvePendingResponseSession({ title: "TARGET" }, tempRoot).name, "test");
+
+  const multilineResponse = parseResponseMarker({
+    prompt: "[xmux-claude-response]\n\nTARGET\n\n---\n\n## Details\n\nbody text",
+  });
+  assert.equal(multilineResponse.title, "TARGET");
+  assert.equal(multilineResponse.body, "TARGET\n\n---\n\n## Details\n\nbody text");
+  assert.equal(
+    resolvePendingResponseSession(multilineResponse, tempRoot).name,
+    "test",
+    "multi-line response markers should match by first response line, not whole body",
+  );
 
   process.env.XMUX_CODEX_SESSION_NAME = "old";
   assert.equal(

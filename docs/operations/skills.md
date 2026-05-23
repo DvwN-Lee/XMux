@@ -37,7 +37,8 @@ Codex skill triggers are explicit-first-token only:
 - `$xmux-claude` / `$xmux-claude!` for Claude harness routing.
 - `$xmux-send <target> <instruction>` / `$xmux-send! <target> <literal prompt>`
   for Codex-to-Codex sends through `xmux send-pane <target> --json -- ...`.
-  Use `<project>/<session>` for cross-project targets.
+  Delivered prompts are marked with `[xmux-send-message]` and `delivery:
+  one-way`; use `<project>/<session>` for cross-project targets.
 
 Both destinations are protected by `.xmux-managed-skill` marker files. Setup
 refuses to overwrite a user-created asset with the same name unless the

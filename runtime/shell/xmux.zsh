@@ -211,7 +211,7 @@ _xmux_set_resolved_from_tmux() {
 _xmux_find_session_by_display() {
   local wanted="$1" session display managed
   local -a sessions
-  sessions=(${(f)"$(tmux list-sessions -F '#S' 2>/dev/null)"})
+  sessions=(${(f)"$(tmux list-sessions -F '#S' 2>/dev/null || true)"})
   for session in "${sessions[@]}"; do
     managed="$(_xmux_tmux_session_option "$session" @xmux-managed)"
     [[ "$managed" == "1" ]] || continue
@@ -658,7 +658,7 @@ _xmux_cmd_sessions() {
   _xmux_require_tmux || return 1
   local session managed display project_dir
   local -a sessions
-  sessions=(${(f)"$(tmux list-sessions -F '#S' 2>/dev/null)"})
+  sessions=(${(f)"$(tmux list-sessions -F '#S' 2>/dev/null || true)"})
   for session in "${sessions[@]}"; do
     managed="$(_xmux_tmux_session_option "$session" @xmux-managed)"
     [[ "$managed" == "1" ]] || continue
@@ -681,6 +681,60 @@ _xmux_send_pane_error() {
     print -r -- "{\"ok\":false,\"status\":\"failed\",\"error\":\"$escaped\"}"
   else
     echo "error: $message" >&2
+  fi
+}
+
+_xmux_find_managed_session_for_raw() {
+  local raw="$1" session managed candidate_raw project_dir display
+  local -a sessions
+  command -v tmux >/dev/null 2>&1 || return 1
+  sessions=(${(f)"$(tmux list-sessions -F '#S' 2>/dev/null || true)"})
+  for session in "${sessions[@]}"; do
+    managed="$(_xmux_tmux_session_option "$session" @xmux-managed)"
+    [[ "$managed" == "1" ]] || continue
+    candidate_raw="$(_xmux_tmux_session_option "$session" @xmux-raw-name)"
+    [[ -n "$candidate_raw" ]] || candidate_raw="$session"
+    [[ "$candidate_raw" == "$raw" ]] || continue
+    project_dir="$(_xmux_tmux_session_option "$session" @xmux-project-dir)"
+    display="$(_xmux_tmux_session_option "$session" @xmux-display-name)"
+    [[ -n "$display" ]] || display="$session"
+    typeset -g _XMUX_MATCHED_SESSION_NAME="$session"
+    typeset -g _XMUX_MATCHED_SESSION_PROJECT_DIR="$project_dir"
+    typeset -g _XMUX_MATCHED_SESSION_DISPLAY_NAME="$display"
+    return 0
+  done
+  return 1
+}
+
+_xmux_send_pane_resolve_error_message() {
+  local query="$1" managed project_dir display
+
+  if _xmux_tmux_has_session "$query"; then
+    managed="$(_xmux_tmux_session_option "$query" @xmux-managed)"
+    if [[ "$managed" != "1" ]]; then
+      print -r -- "tmux session '$query' exists but is not managed by XMux."
+      return 0
+    fi
+    project_dir="$(_xmux_tmux_session_option "$query" @xmux-project-dir)"
+    if [[ -n "$project_dir" && "$project_dir" != "$XMUX_PROJECT_DIR" ]]; then
+      display="$(_xmux_tmux_session_option "$query" @xmux-display-name)"
+      [[ -n "$display" ]] || display="$query"
+      print -r -- "XMux session '$display' belongs to project '$project_dir'."
+      return 0
+    fi
+  fi
+
+  if _xmux_is_strict_display "$query" && _xmux_find_managed_session_for_raw "$query"; then
+    if [[ -n "$_XMUX_MATCHED_SESSION_PROJECT_DIR" && "$_XMUX_MATCHED_SESSION_PROJECT_DIR" != "$XMUX_PROJECT_DIR" ]]; then
+      print -r -- "XMux session '$_XMUX_MATCHED_SESSION_DISPLAY_NAME' belongs to project '$_XMUX_MATCHED_SESSION_PROJECT_DIR'."
+      return 0
+    fi
+  fi
+
+  if [[ "$query" == */* ]]; then
+    print -r -- "XMux session display '$query' was not found."
+  else
+    print -r -- "XMux Codex session '$query' was not found in this project."
   fi
 }
 
@@ -773,7 +827,9 @@ _xmux_cmd_send_pane() {
     return 1
   fi
   if ! _xmux_resolve_existing_session "$target"; then
-    _xmux_send_pane_error "XMux Codex session '$target' is not active." "$json"
+    local resolve_message
+    resolve_message="$(_xmux_send_pane_resolve_error_message "$target")"
+    _xmux_send_pane_error "$resolve_message" "$json"
     return 1
   fi
 

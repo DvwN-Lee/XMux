@@ -48,8 +48,39 @@ _xmux_require_tmux() {
   return 0
 }
 
+tmux() {
+  case "$1:$2:$3" in
+    list-sessions:-F:#S)
+      print -r -- "xmux-scoped-wrong-project"
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 _xmux_current_tmux_session() {
   print -r -- "${TEST_CURRENT_TMUX_SESSION:-}"
+}
+
+_xmux_tmux_has_session() {
+  case "$1" in
+    raw-unmanaged|raw-wrong-project) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_xmux_tmux_session_option() {
+  case "$1:$2" in
+    raw-unmanaged:@xmux-managed) print -r -- "0" ;;
+    raw-wrong-project:@xmux-managed) print -r -- "1" ;;
+    raw-wrong-project:@xmux-project-dir) print -r -- "$ROOT/.codex/agent-runs/send-pane/other-project" ;;
+    raw-wrong-project:@xmux-display-name) print -r -- "other-project/raw-wrong-project" ;;
+    xmux-scoped-wrong-project:@xmux-managed) print -r -- "1" ;;
+    xmux-scoped-wrong-project:@xmux-raw-name) print -r -- "scoped-wrong-project" ;;
+    xmux-scoped-wrong-project:@xmux-project-dir) print -r -- "$ROOT/.codex/agent-runs/send-pane/scoped-other-project" ;;
+    xmux-scoped-wrong-project:@xmux-display-name) print -r -- "scoped-other-project/scoped-wrong-project" ;;
+    *) print -r -- "" ;;
+  esac
 }
 
 _xmux_resolve_existing_session() {
@@ -115,6 +146,21 @@ if out="$(_xmux_cmd_send_pane --to missing --json --prompt "hello" 2>/dev/null)"
 fi
 expect_contains "$out" "\"ok\":false" "json error ok flag"
 expect_contains "$out" "\"status\":\"failed\"" "json error status"
-expect_contains "$out" "\"error\":\"XMux Codex session 'missing' is not active.\"" "json error message"
+expect_contains "$out" "\"error\":\"XMux Codex session 'missing' was not found in this project.\"" "json error message"
+
+if out="$(_xmux_cmd_send_pane --to raw-unmanaged --json --prompt "hello" 2>/dev/null)"; then
+  fail "unmanaged tmux target with --json should fail"
+fi
+expect_contains "$out" "\"error\":\"tmux session 'raw-unmanaged' exists but is not managed by XMux.\"" "unmanaged tmux diagnostic"
+
+if out="$(_xmux_cmd_send_pane --to raw-wrong-project --json --prompt "hello" 2>/dev/null)"; then
+  fail "wrong project target with --json should fail"
+fi
+expect_contains "$out" "\"error\":\"XMux session 'other-project/raw-wrong-project' belongs to project '$ROOT/.codex/agent-runs/send-pane/other-project'.\"" "wrong project diagnostic"
+
+if out="$(_xmux_cmd_send_pane --to scoped-wrong-project --json --prompt "hello" 2>/dev/null)"; then
+  fail "scoped wrong project target with --json should fail"
+fi
+expect_contains "$out" "\"error\":\"XMux session 'scoped-other-project/scoped-wrong-project' belongs to project '$ROOT/.codex/agent-runs/send-pane/scoped-other-project'.\"" "scoped raw-name wrong project diagnostic"
 
 print -r -- "scoped naming tests passed"

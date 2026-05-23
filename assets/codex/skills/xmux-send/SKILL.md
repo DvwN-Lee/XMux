@@ -34,16 +34,40 @@ If neither trigger is the first token, do not send anything.
 1. Parse trigger mode, target, and body.
 2. In synthesis mode, generate a target-facing prompt instead of forwarding the
    trigger text verbatim.
-3. Send through the single command path:
+3. Always wrap the target-visible prompt in a one-way XMux send envelope before
+   delivery. The first line must be exactly `[xmux-send-message]` so the target
+   pane can distinguish this from a direct user prompt.
 
-```zsh
-xmux send-pane <target> --json -- "<generated prompt>"
+For synthesis mode, send this full marked prompt:
+
+```text
+[xmux-send-message]
+
+source: $xmux-send
+mode: synthesis
+delivery: one-way
+target: <target>
+
+<generated target-facing prompt>
 ```
 
-For raw mode, send the literal body:
+For raw mode, send this full marked prompt:
+
+```text
+[xmux-send-message]
+
+source: $xmux-send!
+mode: raw
+delivery: one-way
+target: <target>
+
+<literal prompt body>
+```
+
+Then send through the single command path:
 
 ```zsh
-xmux send-pane <target> --json -- "<literal prompt>"
+xmux send-pane <target> --json -- "<full marked prompt>"
 ```
 
 4. Add `--force` only when the user explicitly asks to force an override for

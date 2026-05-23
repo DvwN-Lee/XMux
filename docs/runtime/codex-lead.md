@@ -109,13 +109,14 @@ $xmux-send review Ask this session to isolate the failing test and report a patc
 $xmux-send! api/review Send this exact prompt body to the target session.
 ```
 
-`$xmux-send` synthesizes a target-facing prompt and dispatches it through:
+`$xmux-send` synthesizes a target-facing prompt, wraps it in a one-way
+`[xmux-send-message]` envelope, and dispatches it through:
 
 ```zsh
-xmux send-pane <target> --json -- "<generated prompt>"
+xmux send-pane <target> --json -- "<full marked prompt>"
 ```
 
-`$xmux-send!` forwards the literal body with the same command shape. Targets
+`$xmux-send!` forwards the literal body inside the same envelope shape. Targets
 can use current-project session names or `<project>/<session>` for cross-project
 routing. Self-send/busy overrides require explicit user intent for `--force`.
 The sending turn does not wait for or summarize target responses.

@@ -78,14 +78,15 @@ $xmux-send review Ask this session to focus on reproducing the failing test.
 $xmux-send! api/review Send this exact prompt body to the target session.
 ```
 
-`$xmux-send` builds a target-facing prompt from context and then calls:
+`$xmux-send` builds a target-facing prompt from context, wraps it in a
+one-way `[xmux-send-message]` envelope, and then calls:
 
 ```bash
-xmux send-pane <target> --json -- "<generated prompt>"
+xmux send-pane <target> --json -- "<full marked prompt>"
 ```
 
-`$xmux-send!` forwards the literal body with the same command shape. Targets may
-be a session name in the current project or `<project>/<session>` for
+`$xmux-send!` forwards the literal body inside the same envelope shape. Targets
+may be a session name in the current project or `<project>/<session>` for
 cross-project routing. The sending turn does not wait for or summarize target
 responses.
 

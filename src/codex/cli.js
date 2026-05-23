@@ -8,6 +8,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const {
   listUnifiedSessions,
+  readUnifiedSession,
   unifiedSessionPath,
   writeLegacySessionMirror,
   writeUnifiedSession,
@@ -340,7 +341,7 @@ function claudeResponsePath(id, root = stateRoot()) {
 }
 
 function readSession(name, root = stateRoot()) {
-  return readJson(sessionPath(name, root), null);
+  return readUnifiedSession('codex', name, root);
 }
 
 function writeSession(session, root = stateRoot()) {
@@ -378,6 +379,23 @@ function clearExpiredPending(session, root = stateRoot()) {
     session.updated_at = nowTs();
     writeSession(session, root);
   }
+  return session;
+}
+
+const PANE_RUN_EXIT_MARKER_FIELDS = [
+  'status',
+  'terminated_at',
+  'exited_at',
+  'exit_code',
+  'exit_signal',
+  'socket_removed_at',
+  'pane_killed_at',
+  'pane_exited_at',
+];
+
+function clearPaneRunExitMarkers(session = {}) {
+  if (!session || typeof session !== 'object') return session;
+  for (const field of PANE_RUN_EXIT_MARKER_FIELDS) delete session[field];
   return session;
 }
 
@@ -653,13 +671,10 @@ function parseMarker(input = {}, marker, fallbackTitle) {
   if (prompt !== marker && !prompt.startsWith(`${marker}\n`) && !prompt.startsWith(`${marker} `)) {
     return null;
   }
-  const title = prompt
-    .slice(marker.length)
-    .trim()
-    .replace(/^#+\s*/, '');
+  const body = visibleMarkerBody(input, marker);
   return {
-    title: sanitizeTitle(title || '', fallbackTitle),
-    body: canonicalPrompt(title || ''),
+    title: titleFromText(body, fallbackTitle),
+    body,
   };
 }
 
@@ -1371,6 +1386,7 @@ function cmdPaneRun(opts) {
     name,
     created_at: nowTs(),
   };
+  clearPaneRunExitMarkers(session);
   session.active = true;
   session.pane = process.env.TMUX_PANE || session.pane || '';
   session.socket_path = sock;
@@ -1464,6 +1480,7 @@ module.exports = {
   sendResponseToSession,
   sendRequestToSession,
   socketPath,
+  clearPaneRunExitMarkers,
   parseResponseMarker,
   resolvePendingResponseSession,
   resolvePendingRequestSession,

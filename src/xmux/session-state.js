@@ -6,6 +6,14 @@ const path = require('node:path');
 const SESSION_SCHEMA = 'xmux.session.v1';
 const SESSION_SCHEMA_VERSION = 1;
 const SESSION_ROLES = new Set(['codex', 'claude']);
+const SESSION_EXIT_MARKER_FIELDS = [
+  'exited_at',
+  'exit_code',
+  'exit_signal',
+  'socket_removed_at',
+  'pane_killed_at',
+  'pane_exited_at',
+];
 
 function safeComponent(value, field) {
   const text = String(value || '').trim();
@@ -61,7 +69,9 @@ function unifiedSessionPath(role, name, root) {
 
 function sessionStatus(session = {}) {
   if (session.active === false) return 'terminated';
-  if (['active', 'draining', 'terminated'].includes(session.status)) return session.status;
+  if (session.status === 'draining') return 'draining';
+  if (session.status === 'active') return 'active';
+  if (session.status === 'terminated') return session.active === true ? 'active' : 'terminated';
   return 'active';
 }
 
@@ -107,6 +117,9 @@ function unifiedSessionFromLegacy(role, session = {}) {
   if (cleanRole === 'claude' && session.claude_session_id) {
     doc.provider_session_id = session.claude_session_id;
   }
+  if (status !== 'terminated') {
+    for (const field of SESSION_EXIT_MARKER_FIELDS) delete doc[field];
+  }
   return doc;
 }
 
@@ -142,8 +155,17 @@ function writeLegacySessionMirror(role, session, root) {
   return filePath;
 }
 
+function normalizedUnifiedSession(doc, fallbackRole = '') {
+  if (!doc || doc.schema !== SESSION_SCHEMA) return doc;
+  try {
+    return unifiedSessionFromLegacy(doc.role || fallbackRole, doc);
+  } catch (_) {
+    return doc;
+  }
+}
+
 function readUnifiedSession(role, name, root) {
-  return readJson(unifiedSessionPath(role, name, root), null);
+  return normalizedUnifiedSession(readJson(unifiedSessionPath(role, name, root), null), role);
 }
 
 function listUnifiedSessions(root) {
@@ -152,6 +174,7 @@ function listUnifiedSessions(root) {
   return fs.readdirSync(dir)
     .filter((name) => name.endsWith('.json'))
     .map((name) => readJson(path.join(dir, name), null))
+    .map((item) => normalizedUnifiedSession(item))
     .filter((item) => item && item.schema === SESSION_SCHEMA)
     .sort((a, b) => String(a.session_id).localeCompare(String(b.session_id)));
 }

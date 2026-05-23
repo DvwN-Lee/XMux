@@ -169,7 +169,7 @@ def inject_prompt(master_fd, message):
     else:
         write_all(master_fd, data)
     if message.get("enter", True):
-        default_enter_delay = "0.20" if message.get("bracketed_paste", True) else "0.12"
+        default_enter_delay = "0.75" if message.get("bracketed_paste", True) else "0.12"
         time.sleep(float(os.environ.get("XMUX_CLAUDE_ENTER_DELAY", default_enter_delay)))
         write_all(master_fd, b"\r")
 

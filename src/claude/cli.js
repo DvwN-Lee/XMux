@@ -262,7 +262,7 @@ function responsePath(id, root = stateRoot()) {
 }
 
 function readSession(name, root = stateRoot()) {
-  return readJson(sessionPath(name, root), null);
+  return readUnifiedSession('claude', name, root);
 }
 
 function writeSession(session, root = stateRoot()) {
