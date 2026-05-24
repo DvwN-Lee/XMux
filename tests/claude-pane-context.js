@@ -23,6 +23,10 @@ if (args[0] === "set-option" || args[0] === "select-pane") {
   process.exit(0);
 }
 if (args[0] === "display-message" && args[1] === "-pt") {
+  if (process.env.XMUX_FAKE_TMUX_DENY === "1") {
+    console.error("error connecting to /private/tmp/tmux-501/default (Operation not permitted)");
+    process.exit(1);
+  }
   const pane = args[2];
   const format = args.slice(3).join(" ");
   const alive = pane === "%404" || pane === "%405";
@@ -112,6 +116,18 @@ writeUnifiedSession("codex", {
   pane: "%405",
 }, tempRoot);
 assert.equal(resolveCodexPaneContext(tempRoot).reason, "ambiguous_codex_session_without_tmux_context");
+
+process.env.XMUX_CODEX_SESSION_NAME = "dev";
+process.env.TMUX_PANE = "%404";
+process.env.XMUX_FAKE_TMUX_DENY = "1";
+assert.deepEqual(resolveCodexPaneContext(tempRoot), {
+  sessionName: "dev",
+  pane: "",
+  reason: "tmux_access_denied",
+});
+delete process.env.XMUX_FAKE_TMUX_DENY;
+delete process.env.XMUX_CODEX_SESSION_NAME;
+delete process.env.TMUX_PANE;
 
 const stale = decorateSessionRuntime({
   schema: "xmux.claude.session.v1",

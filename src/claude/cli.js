@@ -430,10 +430,32 @@ function currentTmuxPane() {
   return runTmux(['display-message', '-p', '#{pane_id}']);
 }
 
-function tmuxPaneAlive(pane) {
-  if (!pane) return false;
+function tmuxProbeFailureReason(result) {
+  const error = result && result.error ? String(result.error.message || result.error) : '';
+  const code = result && result.error && result.error.code ? String(result.error.code) : '';
+  const stderr = String(result && result.stderr ? result.stderr : '').trim();
+  const text = `${code}\n${error}\n${stderr}`;
+  if (/can't find pane|pane .*not found|no such pane|can't find window|can't find session/i.test(text)) return 'pane_not_found';
+  if (code === 'ENOENT' || /command not found|tmux: not found/i.test(text)) return 'tmux_not_found';
+  if (/operation not permitted|permission denied|access denied/i.test(text)) return 'tmux_access_denied';
+  if (/error connecting to|no server running|failed to connect|connection refused/i.test(text)) return 'tmux_unavailable';
+  return 'tmux_probe_failed';
+}
+
+function tmuxPaneProbe(pane) {
+  if (!pane) return { alive: false, reason: 'pane_missing' };
   const result = spawnSync('tmux', ['display-message', '-pt', pane, '#{pane_dead}'], { encoding: 'utf8' });
-  return result.status === 0 && String(result.stdout || '').trim() === '0';
+  if (result.status === 0) {
+    const dead = String(result.stdout || '').trim();
+    if (dead === '0') return { alive: true, reason: 'alive' };
+    if (dead === '1') return { alive: false, reason: 'pane_dead' };
+    return { alive: false, reason: 'tmux_probe_failed' };
+  }
+  return { alive: false, reason: tmuxProbeFailureReason(result) };
+}
+
+function tmuxPaneAlive(pane) {
+  return tmuxPaneProbe(pane).alive;
 }
 
 function tmuxPaneWindowKey(pane) {
@@ -475,18 +497,40 @@ function readCodexSession(name, root = stateRoot()) {
 function codexContextErrorMessage(context, action) {
   const reason = context && context.reason ? context.reason : 'unknown';
   const sessionName = context && context.sessionName ? ` '${context.sessionName}'` : '';
+  if (isTmuxProbeUnavailableReason(reason)) {
+    return `${action} could not verify the active Codex pane in the current XMux tmux window${sessionName}; reason: ${reason}`;
+  }
   return `${action} requires an active Codex pane in the current XMux tmux window${sessionName}; reason: ${reason}`;
+}
+
+function isTmuxProbeUnavailableReason(reason) {
+  return reason === 'tmux_access_denied' || reason === 'tmux_unavailable' || reason === 'tmux_not_found' || reason === 'tmux_probe_failed';
+}
+
+function firstTmuxProbeUnavailableReason(probes = []) {
+  for (const probe of probes) {
+    if (probe && isTmuxProbeUnavailableReason(probe.reason)) return probe.reason;
+  }
+  return '';
 }
 
 function resolveCodexPaneContext(root = stateRoot()) {
   const envSession = String(process.env.XMUX_CODEX_SESSION_NAME || process.env.XMUX_TEAM || '').trim();
-  const referencePane = process.env.TMUX_PANE && tmuxPaneAlive(process.env.TMUX_PANE)
-    ? process.env.TMUX_PANE
-    : '';
+  const paneProbes = new Map();
+  const probePane = (pane) => {
+    if (!pane) return null;
+    if (!paneProbes.has(pane)) paneProbes.set(pane, tmuxPaneProbe(pane));
+    return paneProbes.get(pane);
+  };
+  const referenceProbe = process.env.TMUX_PANE ? probePane(process.env.TMUX_PANE) : null;
+  const referencePane = referenceProbe && referenceProbe.alive ? process.env.TMUX_PANE : '';
   const sessions = listCodexSessions(root);
+  const probedCandidates = [];
   const aliveCandidates = sessions.filter((session) => {
     if (!session || session.active === false || !session.pane) return false;
-    return tmuxPaneAlive(session.pane);
+    const probe = probePane(session.pane);
+    probedCandidates.push({ session, probe });
+    return probe && probe.alive;
   });
 
   if (!referencePane) {
@@ -512,6 +556,16 @@ function resolveCodexPaneContext(root = stateRoot()) {
       if (aliveCandidates.length > 1) {
         return { sessionName: '', pane: '', reason: 'ambiguous_codex_session_without_tmux_context' };
       }
+      const envRecord = sessions.find((session) => session && session.name === envSession) || null;
+      const envProbe = envRecord && envRecord.pane ? probePane(envRecord.pane) : null;
+      const tmuxReason = firstTmuxProbeUnavailableReason([referenceProbe, envProbe, ...probedCandidates.map((item) => item.probe)]);
+      if (tmuxReason) return { sessionName: envSession, pane: '', reason: tmuxReason };
+      if (envRecord && envRecord.active !== false && !envRecord.pane) {
+        return { sessionName: envSession, pane: '', reason: 'codex_pane_missing' };
+      }
+      if (envRecord && envProbe && (envProbe.reason === 'pane_dead' || envProbe.reason === 'pane_not_found')) {
+        return { sessionName: envSession, pane: envRecord.pane || '', reason: 'codex_pane_not_alive' };
+      }
       return { sessionName: envSession, pane: '', reason: 'codex_session_not_active' };
     }
     if (aliveCandidates.length === 1) {
@@ -526,6 +580,8 @@ function resolveCodexPaneContext(root = stateRoot()) {
     if (aliveCandidates.length > 1) {
       return { sessionName: '', pane: '', reason: 'ambiguous_codex_session_without_tmux_context' };
     }
+    const tmuxReason = firstTmuxProbeUnavailableReason([referenceProbe, ...probedCandidates.map((item) => item.probe)]);
+    if (tmuxReason) return { sessionName: '', pane: '', reason: tmuxReason };
     return { sessionName: '', pane: '', reason: 'no_tmux_pane_context' };
   }
 
@@ -541,6 +597,10 @@ function resolveCodexPaneContext(root = stateRoot()) {
     if (sameWindowCandidates.length > 1) {
       return { sessionName: '', pane: '', referencePane, reason: 'ambiguous_current_window_codex_session' };
     }
+    const envRecord = sessions.find((session) => session && session.name === envSession) || null;
+    const envProbe = envRecord && envRecord.pane ? probePane(envRecord.pane) : null;
+    const tmuxReason = firstTmuxProbeUnavailableReason([envProbe, ...probedCandidates.map((item) => item.probe)]);
+    if (tmuxReason) return { sessionName: envSession, pane: '', referencePane, reason: tmuxReason };
     return {
       sessionName: envSession,
       pane: '',
@@ -595,11 +655,15 @@ function validateCodexTargetInSameWindow(sessionName, referencePane, root = stat
   if (!session || session.active === false || !session.pane) {
     return { ok: false, sessionName: cleanName, error: `Codex session '${cleanName}' is not active` };
   }
-  if (!tmuxPaneAlive(session.pane)) {
-    return { ok: false, sessionName: cleanName, pane: session.pane || '', error: `Codex session '${cleanName}' pane is not alive` };
+  const sessionProbe = tmuxPaneProbe(session.pane);
+  if (!sessionProbe.alive) {
+    const reason = isTmuxProbeUnavailableReason(sessionProbe.reason) ? sessionProbe.reason : 'codex_pane_not_alive';
+    return { ok: false, sessionName: cleanName, pane: session.pane || '', error: `Codex session '${cleanName}' pane is not alive; reason: ${reason}` };
   }
-  if (!referencePane || !tmuxPaneAlive(referencePane)) {
-    return { ok: false, sessionName: cleanName, pane: session.pane || '', error: 'current Claude pane is not available for pair validation' };
+  const referenceProbe = tmuxPaneProbe(referencePane);
+  if (!referencePane || !referenceProbe.alive) {
+    const reason = isTmuxProbeUnavailableReason(referenceProbe.reason) ? referenceProbe.reason : 'reference_pane_not_alive';
+    return { ok: false, sessionName: cleanName, pane: session.pane || '', error: `current Claude pane is not available for pair validation; reason: ${reason}` };
   }
   if (!sameTmuxWindow(session.pane, referencePane)) {
     return { ok: false, sessionName: cleanName, pane: session.pane || '', error: `Codex session '${cleanName}' is not in the current XMux pane pair` };

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.7 - 2026-05-24
+
+- Preserved tmux pane probe failure reasons in Claude routing so tmux socket
+  access failures report `tmux_access_denied` or `tmux_unavailable` instead of
+  being misdiagnosed as `codex_session_not_active`.
+- Added regression coverage for denied tmux access while resolving the active
+  Codex pane context.
+
 ## 2.0.6 - 2026-05-24
 
 - Allowed `xmux claude send` and `xmux claude start` to recover from stale
