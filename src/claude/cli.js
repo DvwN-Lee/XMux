@@ -500,6 +500,18 @@ function resolveCodexPaneContext(root = stateRoot()) {
           referencePaneSource: 'codex-session-state',
         };
       }
+      if (aliveCandidates.length === 1) {
+        const fallback = aliveCandidates[0];
+        return {
+          sessionName: fallback.name || '',
+          pane: fallback.pane || '',
+          referencePane: fallback.pane || '',
+          referencePaneSource: 'codex-session-state',
+        };
+      }
+      if (aliveCandidates.length > 1) {
+        return { sessionName: '', pane: '', reason: 'ambiguous_codex_session_without_tmux_context' };
+      }
       return { sessionName: envSession, pane: '', reason: 'codex_session_not_active' };
     }
     if (aliveCandidates.length === 1) {
@@ -522,6 +534,13 @@ function resolveCodexPaneContext(root = stateRoot()) {
     const selected = sameWindowCandidates.find((session) => session.name === envSession) || null;
     if (selected) return { sessionName: selected.name || '', pane: selected.pane || '', referencePane };
     const envAlive = aliveCandidates.find((session) => session.name === envSession);
+    if (sameWindowCandidates.length === 1) {
+      const fallback = sameWindowCandidates[0];
+      return { sessionName: fallback.name || '', pane: fallback.pane || '', referencePane };
+    }
+    if (sameWindowCandidates.length > 1) {
+      return { sessionName: '', pane: '', referencePane, reason: 'ambiguous_current_window_codex_session' };
+    }
     return {
       sessionName: envSession,
       pane: '',

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.6 - 2026-05-24
+
+- Allowed `xmux claude send` and `xmux claude start` to recover from stale
+  inherited Codex session names when the current XMux tmux window has exactly
+  one active Codex pane, so Claude split-pane bootstrap no longer stops with
+  `codex_session_not_active` before creating the pane.
+
 ## 2.0.5 - 2026-05-24
 
 - Normalized Codex and Claude stop output so inactive sessions consistently

@@ -81,7 +81,23 @@ assert.deepEqual(resolveCodexPaneContext(tempRoot), {
   referencePaneSource: "codex-session-state",
 });
 
+process.env.XMUX_CODEX_SESSION_NAME = "inv";
+assert.deepEqual(resolveCodexPaneContext(tempRoot), {
+  sessionName: "dev",
+  pane: "%404",
+  referencePane: "%404",
+  referencePaneSource: "codex-session-state",
+});
+
+process.env.TMUX_PANE = "%404";
+assert.deepEqual(resolveCodexPaneContext(tempRoot), {
+  sessionName: "dev",
+  pane: "%404",
+  referencePane: "%404",
+});
+
 delete process.env.XMUX_CODEX_SESSION_NAME;
+delete process.env.TMUX_PANE;
 assert.deepEqual(resolveCodexPaneContext(tempRoot), {
   sessionName: "dev",
   pane: "%404",
