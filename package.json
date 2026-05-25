@@ -1,7 +1,7 @@
 {
   "name": "xmux",
-  "version": "2.0.7",
-  "description": "XMux runtime helpers and Claude hook harness",
+  "version": "1.0.0",
+  "description": "XMux communication harness for Codex and Claude",
   "bin": {
     "xmux": "bin/xmux",
     "xmux-claude-harness": "dist/bin/xmux-claude-harness.js",

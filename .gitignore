@@ -29,6 +29,7 @@ tests/*
 !tests/claude-prompt-input.js
 !tests/session-state.js
 !tests/scoped-naming.zsh
+!tests/codex-claude-e2e.zsh
 **/__pycache__/
 **/.pytest_cache/
 /GEMINI.md

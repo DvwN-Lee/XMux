@@ -21,6 +21,17 @@ the first token is `$xmux-send` or `$xmux-send!`.
 
 If neither trigger is the first token, do not send anything.
 
+## Transport Consent
+
+The explicit first-token trigger is the user's consent for the single XMux
+Codex-to-Codex transport operation in that turn. If the wrapper command needs
+tmux/socket access outside the command sandbox, request sandbox escalation only
+for the exact `xmux send-pane ...` command produced from that trigger.
+
+If the user did not start the prompt with `$xmux-send` or `$xmux-send!`, do not
+request sandbox escalation for Codex-to-Codex transport. Report that the
+explicit trigger is required instead of sending through another path.
+
 ## Target Rules
 
 - Require an explicit target before sending.
@@ -67,8 +78,10 @@ target: <target>
 Then send through the single command path:
 
 ```zsh
-xmux send-pane <target> --json -- "<full marked prompt>"
+XMUX_TRANSPORT_CONSENT=xmux-send "$XMUX_INSTALL_DIR/bin/xmux" send-pane <target> --json -- "<full marked prompt>"
 ```
+
+Use `XMUX_TRANSPORT_CONSENT='xmux-send!'` for raw mode.
 
 4. Add `--force` only when the user explicitly asks to force an override for
    self-send or a busy target.

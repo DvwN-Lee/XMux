@@ -46,6 +46,7 @@ const promptFile = path.join(tempRoot, "prompt.md");
 fs.writeFileSync(promptFile, "hello\n", "utf8");
 
 const originalStateDir = process.env.XMUX_STATE_DIR;
+const originalConsent = process.env.XMUX_TRANSPORT_CONSENT;
 const originalError = console.error;
 const errors = [];
 
@@ -56,10 +57,22 @@ claudeMain([
   "send",
   "--trigger",
   "xmux-claude",
+  "--prompt",
+  "hello",
+]).then((code) => {
+  assert.equal(code, 1);
+  assert.equal(errors.some((message) => message.includes("first-token trigger transport consent")), true);
+  errors.length = 0;
+  process.env.XMUX_TRANSPORT_CONSENT = "xmux-claude";
+  return claudeMain([
+  "send",
+  "--trigger",
+  "xmux-claude",
   "--prompt-file",
   promptFile,
   "--dry-run",
-]).then((code) => {
+  ]);
+}).then((code) => {
   assert.equal(code, 1);
   assert.equal(errors.some((message) => message.includes("provide --prompt or --stdin")), true);
   errors.length = 0;
@@ -143,6 +156,8 @@ claudeMain([
   console.error = originalError;
   if (originalStateDir === undefined) delete process.env.XMUX_STATE_DIR;
   else process.env.XMUX_STATE_DIR = originalStateDir;
+  if (originalConsent === undefined) delete process.env.XMUX_TRANSPORT_CONSENT;
+  else process.env.XMUX_TRANSPORT_CONSENT = originalConsent;
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }).then(() => {
   console.log("prompt input tests passed");

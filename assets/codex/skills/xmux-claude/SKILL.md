@@ -22,6 +22,17 @@ Do not use this skill for general requests to "ask Claude" unless the user typed
 If neither trigger is the first token, do not scan Claude sessions, install
 hooks, start Claude, or send any prompt.
 
+## Transport Consent
+
+The explicit first-token trigger is the user's consent for the single XMux
+Claude transport operation in that turn. If the wrapper command needs
+tmux/socket access outside the command sandbox, request sandbox escalation only
+for the exact `xmux claude send ...` command produced from that trigger.
+
+If the user did not start the prompt with `$xmux-claude` or `$xmux-claude!`, do
+not request sandbox escalation for Claude transport. Report that the explicit
+trigger is required instead of sending through another path.
+
 ## Workflow
 
 1. Parse only the explicit trigger and mode.
@@ -30,7 +41,7 @@ hooks, start Claude, or send any prompt.
 3. Send the generated prompt through the single XMux entrypoint:
 
 ```zsh
-xmux claude send --trigger xmux-claude --title "<short request title>" --prompt "<generated Claude-facing prompt>" --quiet
+XMUX_TRANSPORT_CONSENT=xmux-claude "$XMUX_INSTALL_DIR/bin/xmux" claude send --trigger xmux-claude --title "<short request title>" --prompt "<generated Claude-facing prompt>" --quiet
 ```
 
 `xmux claude send` installs hooks and ensures the split-pane Claude Code TUI
@@ -51,7 +62,7 @@ in-memory body. XMux does not persist the prompt body in its JSON state.
 For raw mode, use the explicit raw trigger:
 
 ```zsh
-xmux claude send --trigger 'xmux-claude!' --raw --title "<short request title>" --prompt "<literal Claude-facing prompt>" --quiet
+XMUX_TRANSPORT_CONSENT='xmux-claude!' "$XMUX_INSTALL_DIR/bin/xmux" claude send --trigger 'xmux-claude!' --raw --title "<short request title>" --prompt "<literal Claude-facing prompt>" --quiet
 ```
 
 4. After `xmux claude send` succeeds, do not wait, read, summarize, or confirm

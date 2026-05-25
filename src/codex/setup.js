@@ -733,7 +733,7 @@ function parseArgs(argv) {
       opts[arg.slice(2).replace(/-/g, "_")] = expandUser(argv[i + 1]);
       i += 2;
     } else if (arg.startsWith("--mcp") || arg === "--cache-mcp" || arg === "--no-cache-mcp" || arg === "--from-github" || arg === "--server-path") {
-      throw userError(`${arg} was removed; XMux 2.x uses Codex-Claude hooks and bundled assets only`);
+      throw userError(`${arg} is not supported; XMux uses Codex-Claude hooks and bundled assets only`);
     } else {
       throw userError(`unknown or incomplete argument: ${arg}`);
     }

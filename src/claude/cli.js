@@ -988,6 +988,10 @@ function validateTrigger(opts) {
   if ((opts.raw || opts.mode === 'raw') && trigger !== 'xmux-claude!') {
     throw new Error('raw mode requires --trigger xmux-claude!');
   }
+  const consent = String(process.env.XMUX_TRANSPORT_CONSENT || '').trim();
+  if (consent !== trigger) {
+    throw new Error(`xmux claude send requires explicit $${trigger} first-token trigger transport consent`);
+  }
   return trigger;
 }
 

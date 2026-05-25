@@ -115,6 +115,12 @@ expect_contains() {
   [[ "$got" == *"$want"* ]] || fail "$label: expected '$got' to contain '$want'"
 }
 
+if _xmux_cmd_send_pane other -- "hello world" >/dev/null 2>&1; then
+  fail "send-pane should require XMux trigger transport consent"
+fi
+
+export XMUX_TRANSPORT_CONSENT=xmux-send
+
 out="$(_xmux_cmd_send_pane other --clear --no-enter -- "hello world")"
 expect_contains "$out" "PROJECT=$ROOT/.codex/agent-runs/send-pane/other" "target project rewrite"
 expect_contains "$out" "STATE=$ROOT/.codex/agent-runs/send-pane/other/.codex/xmux" "target state rewrite"

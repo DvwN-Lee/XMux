@@ -35,7 +35,7 @@ else
   XMUX_STATE_DIR_EXPLICIT=0
 fi
 
-XMUX_VERSION="2.0.7"
+XMUX_VERSION="1.0.0"
 
 _xmux_project_root() {
   local dir="${1:-$PWD}"
@@ -821,6 +821,10 @@ _xmux_cmd_send_pane() {
     _xmux_send_pane_error "provide prompt text, --prompt, or --stdin." "$json"
     return 1
   }
+  if [[ "${XMUX_TRANSPORT_CONSENT:-}" != "xmux-send" && "${XMUX_TRANSPORT_CONSENT:-}" != "xmux-send!" ]]; then
+    _xmux_send_pane_error 'xmux send-pane requires explicit $xmux-send or $xmux-send! first-token trigger transport consent.' "$json"
+    return 1
+  fi
 
   if ! _xmux_require_tmux >/dev/null 2>&1; then
     _xmux_send_pane_error "tmux is required." "$json"
@@ -872,7 +876,7 @@ _xmux_cmd_send_pane() {
 }
 
 _xmux_legacy_removed() {
-  echo "error: $1 was removed in XMux 2.x. Use the Codex-Claude hook harness through \$xmux-claude and /xmux-codex." >&2
+  echo "error: $1 is not supported by the public XMux protocol. Use \$xmux-claude, /xmux-codex, or \$xmux-send." >&2
   return 1
 }
 

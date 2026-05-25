@@ -3,7 +3,8 @@ Back to [README](../../README.md)
 # XMux Skills
 
 XMux carries only the protocol assets required for its Codex/Claude harness
-surfaces. Skills are not a separate public install surface in the 2.x model.
+surfaces. Skills are installed and refreshed through the main XMux integration
+commands.
 
 Run the single integration command:
 
@@ -40,6 +41,16 @@ Codex skill triggers are explicit-first-token only:
   Delivered prompts are marked with `[xmux-send-message]` and `delivery:
   one-way`; use `<project>/<session>` for cross-project targets.
 
+These triggers are also the consent boundary for XMux transport. When a prompt
+starts with one of the explicit triggers, the Codex skill may request sandbox
+escalation for the single wrapper command needed for that transport:
+`$XMUX_INSTALL_DIR/bin/xmux claude send ...` for `$xmux-claude` and
+`$XMUX_INSTALL_DIR/bin/xmux send-pane ...` for `$xmux-send`. Without the
+explicit first-token trigger, the skill must not request escalation or send by
+another route. The generated wrapper command must carry
+`XMUX_TRANSPORT_CONSENT` with the matching trigger value; direct wrapper calls
+without that consent marker are rejected before transport.
+
 Both destinations are protected by `.xmux-managed-skill` marker files. Setup
 refuses to overwrite a user-created asset with the same name unless the
 destination is already marked as XMux-managed.
@@ -62,7 +73,7 @@ Remove XMux-managed global assets:
 xmux remove-xmux
 ```
 
-Legacy XMux 1.x skill and Codex agent-proxy locations are not refreshed by
+Legacy XMux skill and Codex agent-proxy locations are not refreshed by
 `setup-xmux`. Review and remove them separately:
 
 ```zsh

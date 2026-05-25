@@ -1,7 +1,7 @@
 interface:
   display_name: "xmux-claude"
   short_description: "Use the explicit XMux Claude harness."
-  default_prompt: "Use only when the prompt starts with $xmux-claude or $xmux-claude!. Build a Claude-facing prompt and send it through xmux claude send --trigger xmux-claude --title --prompt --quiet. Use --title only as an XMux metadata/status label; the visible Claude prompt comes from --prompt. XMux routes only to the Claude pane paired with the current Codex tmux window. Use --trigger xmux-claude! --raw --quiet for literal forwarding. Do not wait or confirm in the sending turn; Claude responses return later through clean [xmux-claude-response] prompts. Do not use MCP, teammate commands, spawn_agent, or pane paste injection."
+  default_prompt: "Use only when the prompt starts with $xmux-claude or $xmux-claude!. Build a Claude-facing prompt and send it through XMUX_TRANSPORT_CONSENT=xmux-claude \"$XMUX_INSTALL_DIR/bin/xmux\" claude send --trigger xmux-claude --title --prompt --quiet. Use --title only as an XMux metadata/status label; the visible Claude prompt comes from --prompt. XMux routes only to the Claude pane paired with the current Codex tmux window. Use XMUX_TRANSPORT_CONSENT='xmux-claude!' \"$XMUX_INSTALL_DIR/bin/xmux\" claude send --trigger xmux-claude! --raw --quiet for literal forwarding. Do not wait or confirm in the sending turn; Claude responses return later through clean [xmux-claude-response] prompts. Do not use MCP, teammate commands, spawn_agent, or pane paste injection."
 
 policy:
   allow_implicit_invocation: false

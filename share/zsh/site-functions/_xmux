@@ -11,7 +11,7 @@ commands=(
   "sessions:list XMux tmux sessions"
   "send-pane:send text to an XMux Codex session"
   "setup-xmux:configure global Codex and Claude integration"
-  "cleanup-legacy:remove legacy XMux 1.x state after review"
+  "cleanup-legacy:remove legacy XMux state after review"
   "doctor-xmux:inspect XMux integration"
   "remove-xmux:remove XMux-managed global integration"
   "codex:operate the Codex pane harness"
