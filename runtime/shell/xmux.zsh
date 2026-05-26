@@ -35,7 +35,7 @@ else
   XMUX_STATE_DIR_EXPLICIT=0
 fi
 
-XMUX_VERSION="1.0.0"
+XMUX_VERSION="1.0.1"
 
 _xmux_project_root() {
   local dir="${1:-$PWD}"
@@ -83,10 +83,10 @@ Usage:
   xmux attach <session>
   xmux stop <session>
   xmux sessions
-  xmux send-pane <session> "<text>" [--clear] [--no-enter] [--force] [--json]
+  xmux send-pane <session> "<text>" --transport-consent xmux-send [--clear] [--no-enter] [--force] [--json]
   xmux claude <args...>
   xmux codex <args...>
-  xmux setup-xmux [--with-skills|--without-skills] [--refresh] [--dry-run] [--without-codex] [--without-claude]
+  xmux setup-xmux [--with-skills|--without-skills] [--with-codex-permissions|--without-codex-permissions] [--refresh] [--dry-run] [--without-codex] [--without-claude]
   xmux cleanup-legacy [--dry-run] [--purge-archive] [--force]
   xmux doctor-xmux [--quiet|--json] [--without-codex] [--without-claude]
   xmux remove-xmux [--with-skills|--without-skills] [--dry-run] [--without-codex] [--without-claude]
@@ -740,7 +740,7 @@ _xmux_send_pane_resolve_error_message() {
 
 _xmux_cmd_send_pane() {
   local target="" prompt="" input_mode="" arg
-  local clear=0 no_enter=0 force=0 json=0
+  local clear=0 no_enter=0 force=0 json=0 transport_consent=""
   local -a passthrough
 
   while [[ $# -gt 0 ]]; do
@@ -763,6 +763,11 @@ _xmux_cmd_send_pane() {
         [[ -z "$input_mode" ]] || { _xmux_send_pane_error "prompt was provided more than once." "$json"; return 1; }
         input_mode="stdin"
         shift
+        ;;
+      --transport-consent)
+        [[ $# -ge 2 ]] || { _xmux_send_pane_error "--transport-consent requires a value." "$json"; return 1; }
+        transport_consent="$2"
+        shift 2
         ;;
       --clear)
         clear=1
@@ -792,9 +797,9 @@ _xmux_cmd_send_pane() {
         fi
         ;;
       -h|--help)
-        echo "Usage: xmux send-pane <session> \"<text>\" [--clear] [--no-enter] [--force] [--json]"
-        echo "       xmux send-pane --to <session> --prompt \"<text>\" [--clear] [--no-enter] [--force] [--json]"
-        echo "       xmux send-pane --to <session> --stdin [--clear] [--no-enter] [--force] [--json]"
+        echo "Usage: xmux send-pane <session> \"<text>\" --transport-consent xmux-send [--clear] [--no-enter] [--force] [--json]"
+        echo "       xmux send-pane --to <session> --prompt \"<text>\" --transport-consent xmux-send [--clear] [--no-enter] [--force] [--json]"
+        echo "       xmux send-pane --to <session> --stdin --transport-consent xmux-send [--clear] [--no-enter] [--force] [--json]"
         return 0
         ;;
       -*)
@@ -821,7 +826,8 @@ _xmux_cmd_send_pane() {
     _xmux_send_pane_error "provide prompt text, --prompt, or --stdin." "$json"
     return 1
   }
-  if [[ "${XMUX_TRANSPORT_CONSENT:-}" != "xmux-send" && "${XMUX_TRANSPORT_CONSENT:-}" != "xmux-send!" ]]; then
+  [[ -n "$transport_consent" ]] || transport_consent="${XMUX_TRANSPORT_CONSENT:-}"
+  if [[ "$transport_consent" != "xmux-send" && "$transport_consent" != "xmux-send!" ]]; then
     _xmux_send_pane_error 'xmux send-pane requires explicit $xmux-send or $xmux-send! first-token trigger transport consent.' "$json"
     return 1
   fi

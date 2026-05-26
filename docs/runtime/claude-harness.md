@@ -32,7 +32,7 @@ $xmux-claude!
 xmux claude sessions
 xmux claude start --name default
 xmux claude ensure-hooks
-xmux claude send --trigger xmux-claude --title "<request title>" --prompt "<generated Claude-facing prompt>" --quiet
+xmux claude send --trigger xmux-claude --transport-consent xmux-claude --title "<request title>" --prompt "<generated Claude-facing prompt>" --quiet
 xmux claude send-codex --trigger xmux-codex --title "<request title>" --prompt "<generated Codex-facing prompt>" --quiet
 xmux claude read <request_id>
 xmux claude status --to default

@@ -17,7 +17,7 @@ Codex-originated cycle:
 ```text
 Codex user
   -> $xmux-claude
-  -> xmux claude send --trigger xmux-claude
+  -> xmux claude send --trigger xmux-claude --transport-consent xmux-claude
   -> Claude pane: [xmux-codex-request]
   -> Claude response
   -> Codex pane: [xmux-claude-response]
@@ -477,7 +477,7 @@ tail -n 80 .codex/xmux/codex/events.jsonl
 5. Re-test with the current protocol.
 
 ```zsh
-./bin/xmux claude send --trigger xmux-claude --title "Ping" --prompt "Reply exactly OK" --quiet
+./bin/xmux claude send --trigger xmux-claude --transport-consent xmux-claude --title "Ping" --prompt "Reply exactly OK" --quiet
 ```
 
 ## Prohibited Debug Paths

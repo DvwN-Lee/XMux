@@ -63,10 +63,12 @@ claudeMain([
   assert.equal(code, 1);
   assert.equal(errors.some((message) => message.includes("first-token trigger transport consent")), true);
   errors.length = 0;
-  process.env.XMUX_TRANSPORT_CONSENT = "xmux-claude";
+  delete process.env.XMUX_TRANSPORT_CONSENT;
   return claudeMain([
   "send",
   "--trigger",
+  "xmux-claude",
+  "--transport-consent",
   "xmux-claude",
   "--prompt-file",
   promptFile,

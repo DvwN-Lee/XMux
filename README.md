@@ -26,6 +26,9 @@ xmux setup-xmux
 xmux doctor-xmux
 ```
 
+Setup installs a Codex `xmux-workspace` permission profile that keeps workspace
+writes scoped while allowlisting the active tmux Unix socket for XMux skills.
+
 ## Usage
 
 Start Codex from the target project:

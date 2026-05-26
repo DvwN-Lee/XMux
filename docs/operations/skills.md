@@ -37,19 +37,33 @@ Codex skill triggers are explicit-first-token only:
 
 - `$xmux-claude` / `$xmux-claude!` for Claude harness routing.
 - `$xmux-send <target> <instruction>` / `$xmux-send! <target> <literal prompt>`
-  for Codex-to-Codex sends through `xmux send-pane <target> --json -- ...`.
+  for Codex-to-Codex sends through
+  `xmux send-pane <target> --transport-consent xmux-send --json -- ...`.
   Delivered prompts are marked with `[xmux-send-message]` and `delivery:
   one-way`; use `<project>/<session>` for cross-project targets.
 
 These triggers are also the consent boundary for XMux transport. When a prompt
-starts with one of the explicit triggers, the Codex skill may request sandbox
-escalation for the single wrapper command needed for that transport:
-`$XMUX_INSTALL_DIR/bin/xmux claude send ...` for `$xmux-claude` and
-`$XMUX_INSTALL_DIR/bin/xmux send-pane ...` for `$xmux-send`. Without the
-explicit first-token trigger, the skill must not request escalation or send by
-another route. The generated wrapper command must carry
-`XMUX_TRANSPORT_CONSENT` with the matching trigger value; direct wrapper calls
-without that consent marker are rejected before transport.
+starts with one of the explicit triggers, the Codex skill runs the single
+absolute wrapper command needed for that transport inside the configured Codex
+sandbox:
+`$XMUX_INSTALL_DIR/bin/xmux claude send --transport-consent ...` for
+`$xmux-claude` and
+`$XMUX_INSTALL_DIR/bin/xmux send-pane --transport-consent ...` for
+`$xmux-send`. Without the
+explicit first-token trigger, the skill must not send by another route. The
+generated wrapper command must carry
+`--transport-consent` with the matching trigger value; direct wrapper calls
+without that consent marker are rejected before transport. The older
+`XMUX_TRANSPORT_CONSENT` environment variable remains accepted for
+compatibility, but installed Codex skills use the flag so the configured XMux
+wrapper remains the command prefix seen by Codex policy.
+
+`xmux setup-xmux` installs the Codex `xmux-workspace` permission profile for
+this path: workspace roots and `$TMPDIR` remain writable, public network
+domains are not allowlisted, and the active tmux Unix socket is explicitly
+allowed through `network.unix_sockets`. `xmux doctor-xmux` reports the profile
+as stale if the tmux socket changes or an older `sandbox_mode` setting still
+overrides permission profiles.
 
 Both destinations are protected by `.xmux-managed-skill` marker files. Setup
 refuses to overwrite a user-created asset with the same name unless the

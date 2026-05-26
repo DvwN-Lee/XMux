@@ -61,6 +61,11 @@ xmux setup-xmux
 xmux doctor-xmux
 ```
 
+`setup-xmux` also installs the Codex `xmux-workspace` permission profile. That
+profile keeps normal workspace sandboxing in place, permits `$TMPDIR` scratch
+writes, and allowlists only the active tmux Unix socket needed by XMux skill
+transport.
+
 Start Codex from the target project directory:
 
 ```zsh
@@ -77,7 +82,7 @@ Codex treats the text after `$xmux-claude` as synthesis intent. It builds a
 Claude-facing prompt and sends it through:
 
 ```zsh
-xmux claude send --trigger xmux-claude --title "<request title>" --prompt "<generated Claude-facing prompt>" --quiet
+xmux claude send --trigger xmux-claude --transport-consent xmux-claude --title "<request title>" --prompt "<generated Claude-facing prompt>" --quiet
 ```
 
 `--title` labels the request in XMux metadata and status output; it is not part
@@ -113,7 +118,7 @@ $xmux-send! api/review Send this exact prompt body to the target session.
 `[xmux-send-message]` envelope, and dispatches it through:
 
 ```zsh
-xmux send-pane <target> --json -- "<full marked prompt>"
+xmux send-pane <target> --transport-consent xmux-send --json -- "<full marked prompt>"
 ```
 
 `$xmux-send!` forwards the literal body inside the same envelope shape. Targets

@@ -60,12 +60,16 @@ case "${words[2]:-}" in
       $common_options \
       "--with-skills[install XMux-managed skills]" \
       "--without-skills[skip XMux-managed skill install]" \
+      "--with-codex-permissions[install Codex permission profile for XMux tmux socket]" \
+      "--without-codex-permissions[skip Codex permission profile install]" \
       "--refresh[refresh XMux-managed assets]" \
       "--dry-run[show planned changes]" \
       "--without-codex[skip Codex global integration]" \
       "--without-claude[skip Claude global integration]" \
       "--home[Codex home directory]:directory:_directories" \
       "--project[project directory]:directory:_directories" \
+      "--skills-dir[Codex skills source directory]:directory:_directories" \
+      "--tmux-socket[tmux socket path]:socket:_files" \
       "--ref[release tag recorded in installed metadata]:tag:"
     ;;
   doctor-xmux)
@@ -76,7 +80,9 @@ case "${words[2]:-}" in
       "--without-codex[skip Codex global checks]" \
       "--without-claude[skip Claude global checks]" \
       "--home[Codex home directory]:directory:_directories" \
-      "--project[project directory]:directory:_directories"
+      "--project[project directory]:directory:_directories" \
+      "--skills-dir[Codex skills source directory]:directory:_directories" \
+      "--tmux-socket[tmux socket path]:socket:_files"
     ;;
   cleanup-legacy)
     _arguments -C \
@@ -110,6 +116,7 @@ case "${words[2]:-}" in
       "--to[target session name]:session:_xmux_session_names" \
       "--prompt[prompt text]:text:" \
       "--stdin[read prompt from stdin]" \
+      "--transport-consent[first-token XMux trigger consent]:trigger:(xmux-send xmux-send\\!)" \
       "--clear[clear the current prompt before injection]" \
       "--no-enter[stage prompt without pressing enter]" \
       "--force[allow self-send and busy-target override]" \
@@ -128,6 +135,7 @@ case "${words[2]:-}" in
         "--to[session name]:session:" \
         "--name[session name]:session:" \
         "--trigger[required explicit trigger]:trigger:(xmux-claude xmux-claude\\! xmux-codex)" \
+        "--transport-consent[first-token XMux trigger consent]:trigger:(xmux-claude xmux-claude\\!)" \
         "--prompt[prompt text]:text:" \
         "--stdin[read prompt from stdin]" \
         "--wait[wait for response]" \

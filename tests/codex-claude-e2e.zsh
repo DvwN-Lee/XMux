@@ -77,8 +77,6 @@ def append(event, **fields):
 
 def run_xmux(args, payload=None, timeout=20):
     env = os.environ.copy()
-    if len(args) >= 2 and args[0] == "claude" and args[1] == "send":
-        env["XMUX_TRANSPORT_CONSENT"] = "xmux-claude"
     result = subprocess.run(
         [XMUX, *args],
         input=json.dumps(payload) if payload is not None else None,
@@ -119,7 +117,7 @@ def extract_prompt(buffer, marker):
 
 
 version = run_xmux(["--version"], timeout=10)
-if version.returncode != 0 or "xmux 1.0.0" not in version.stdout:
+if version.returncode != 0 or "xmux 1.0.1" not in version.stdout:
     sys.exit(10)
 
 claude_cmd = " ".join(shlex.quote(item) for item in [FAKE_CLAUDE, XMUX, DONE, FINAL_DONE, ACCEPTED, CLAUDE_REPLY, CODEX_REPLY])
@@ -142,10 +140,12 @@ send = run_xmux(
         "e2e",
         "--trigger",
         "xmux-claude",
+        "--transport-consent",
+        "xmux-claude",
         "--title",
         "E2E Codex to Claude",
         "--prompt",
-        "CLAUDE_E2E_REQUEST: reply with HOOK-PONG-1.0.0",
+        "CLAUDE_E2E_REQUEST: reply with HOOK-PONG-1.0.1",
         "--wait",
         "--timeout",
         "30",
@@ -310,7 +310,7 @@ while time.time() < deadline:
                 "--title",
                 "E2E Claude to Codex",
                 "--prompt",
-                "CODEX_E2E_REQUEST: reply with CODEX-PONG-1.0.0",
+                "CODEX_E2E_REQUEST: reply with CODEX-PONG-1.0.1",
                 "--json",
             ],
             timeout=30,
@@ -342,8 +342,8 @@ version_output="$(
   XMUX_PROJECT_DIR="$project_dir" \
   "$repo_root/bin/xmux" --version
 )"
-[[ "$version_output" == "xmux 1.0.0" ]] || {
-  print -u2 "expected xmux 1.0.0, got: $version_output"
+[[ "$version_output" == "xmux 1.0.1" ]] || {
+  print -u2 "expected xmux 1.0.1, got: $version_output"
   exit 1
 }
 
@@ -359,8 +359,8 @@ version_output="$(
     "$final_done" \
     "$codex_accepted" \
     "$bin_dir/fake-claude.py" \
-    "HOOK-PONG-1.0.0" \
-    "CODEX-PONG-1.0.0"
+    "HOOK-PONG-1.0.1" \
+    "CODEX-PONG-1.0.1"
 )
 session_started=1
 
@@ -372,11 +372,11 @@ for _ in {1..80}; do
       break
     fi
   done < <(tmux list-sessions -F '#{session_name}	#{@xmux-project-dir}	#{@xmux-version}' 2>/dev/null || true)
-  [[ "$session_version" == "1.0.0" ]] && break
+  [[ "$session_version" == "1.0.1" ]] && break
   sleep 0.25
 done
-[[ "$session_version" == "1.0.0" ]] || {
-  print -u2 "expected tmux @xmux-version 1.0.0, got: ${session_version:-missing}"
+[[ "$session_version" == "1.0.1" ]] || {
+  print -u2 "expected tmux @xmux-version 1.0.1, got: ${session_version:-missing}"
   print_debug
   exit 1
 }

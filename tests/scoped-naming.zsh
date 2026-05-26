@@ -119,52 +119,55 @@ if _xmux_cmd_send_pane other -- "hello world" >/dev/null 2>&1; then
   fail "send-pane should require XMux trigger transport consent"
 fi
 
-export XMUX_TRANSPORT_CONSENT=xmux-send
+out="$(XMUX_TRANSPORT_CONSENT=xmux-send _xmux_cmd_send_pane other -- "env consent")"
+expect_contains "$out" "ARGS=send --to other --origin send-pane --prompt env consent" "env consent compatibility"
 
-out="$(_xmux_cmd_send_pane other --clear --no-enter -- "hello world")"
+unset XMUX_TRANSPORT_CONSENT
+
+out="$(_xmux_cmd_send_pane other --transport-consent xmux-send --clear --no-enter -- "hello world")"
 expect_contains "$out" "PROJECT=$ROOT/.codex/agent-runs/send-pane/other" "target project rewrite"
 expect_contains "$out" "STATE=$ROOT/.codex/agent-runs/send-pane/other/.codex/xmux" "target state rewrite"
 expect_contains "$out" "ORIGIN=send-pane" "origin"
 expect_contains "$out" "ARGS=send --to other --origin send-pane --clear --no-enter --prompt hello world" "codex send args"
 
-out="$(_xmux_cmd_send_pane --to other --prompt "explicit text")"
+out="$(_xmux_cmd_send_pane --to other --transport-consent xmux-send --prompt "explicit text")"
 expect_contains "$out" "ARGS=send --to other --origin send-pane --prompt explicit text" "explicit form args"
 
-out="$(_xmux_cmd_send_pane --to other --json --prompt "json text")"
+out="$(_xmux_cmd_send_pane --to other --transport-consent xmux-send --json --prompt "json text")"
 expect_contains "$out" "ARGS=send --to other --origin send-pane --json --prompt json text" "json passthrough args"
 
-out="$(print -rn -- "stdin text" | _xmux_cmd_send_pane --to other --stdin)"
+out="$(print -rn -- "stdin text" | _xmux_cmd_send_pane --to other --transport-consent xmux-send --stdin)"
 expect_contains "$out" "ARGS=send --to other --origin send-pane --stdin" "stdin args"
 
-if TMUX_PANE="%1" XMUX_CODEX_SESSION_NAME="current" TEST_CURRENT_TMUX_SESSION="xmux-current" _xmux_cmd_send_pane current -- "self" >/dev/null 2>&1; then
+if TMUX_PANE="%1" XMUX_CODEX_SESSION_NAME="current" TEST_CURRENT_TMUX_SESSION="xmux-current" _xmux_cmd_send_pane current --transport-consent xmux-send -- "self" >/dev/null 2>&1; then
   fail "self-send should require --force"
 fi
 
-out="$(TMUX_PANE="%1" XMUX_CODEX_SESSION_NAME="current" TEST_CURRENT_TMUX_SESSION="xmux-current" _xmux_cmd_send_pane current --force -- "self")"
+out="$(TMUX_PANE="%1" XMUX_CODEX_SESSION_NAME="current" TEST_CURRENT_TMUX_SESSION="xmux-current" _xmux_cmd_send_pane current --transport-consent xmux-send --force -- "self")"
 expect_contains "$out" "ARGS=send --to current --origin send-pane --force --prompt self" "forced self-send args"
 
-if _xmux_cmd_send_pane missing -- "hello" >/dev/null 2>&1; then
+if _xmux_cmd_send_pane missing --transport-consent xmux-send -- "hello" >/dev/null 2>&1; then
   fail "missing target should fail"
 fi
 
-if out="$(_xmux_cmd_send_pane --to missing --json --prompt "hello" 2>/dev/null)"; then
+if out="$(_xmux_cmd_send_pane --to missing --transport-consent xmux-send --json --prompt "hello" 2>/dev/null)"; then
   fail "missing target with --json should fail"
 fi
 expect_contains "$out" "\"ok\":false" "json error ok flag"
 expect_contains "$out" "\"status\":\"failed\"" "json error status"
 expect_contains "$out" "\"error\":\"XMux Codex session 'missing' was not found in this project.\"" "json error message"
 
-if out="$(_xmux_cmd_send_pane --to raw-unmanaged --json --prompt "hello" 2>/dev/null)"; then
+if out="$(_xmux_cmd_send_pane --to raw-unmanaged --transport-consent xmux-send --json --prompt "hello" 2>/dev/null)"; then
   fail "unmanaged tmux target with --json should fail"
 fi
 expect_contains "$out" "\"error\":\"tmux session 'raw-unmanaged' exists but is not managed by XMux.\"" "unmanaged tmux diagnostic"
 
-if out="$(_xmux_cmd_send_pane --to raw-wrong-project --json --prompt "hello" 2>/dev/null)"; then
+if out="$(_xmux_cmd_send_pane --to raw-wrong-project --transport-consent xmux-send --json --prompt "hello" 2>/dev/null)"; then
   fail "wrong project target with --json should fail"
 fi
 expect_contains "$out" "\"error\":\"XMux session 'other-project/raw-wrong-project' belongs to project '$ROOT/.codex/agent-runs/send-pane/other-project'.\"" "wrong project diagnostic"
 
-if out="$(_xmux_cmd_send_pane --to scoped-wrong-project --json --prompt "hello" 2>/dev/null)"; then
+if out="$(_xmux_cmd_send_pane --to scoped-wrong-project --transport-consent xmux-send --json --prompt "hello" 2>/dev/null)"; then
   fail "scoped wrong project target with --json should fail"
 fi
 expect_contains "$out" "\"error\":\"XMux session 'scoped-other-project/scoped-wrong-project' belongs to project '$ROOT/.codex/agent-runs/send-pane/scoped-other-project'.\"" "scoped raw-name wrong project diagnostic"

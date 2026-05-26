@@ -988,7 +988,7 @@ function validateTrigger(opts) {
   if ((opts.raw || opts.mode === 'raw') && trigger !== 'xmux-claude!') {
     throw new Error('raw mode requires --trigger xmux-claude!');
   }
-  const consent = String(process.env.XMUX_TRANSPORT_CONSENT || '').trim();
+  const consent = String(opts['transport-consent'] || process.env.XMUX_TRANSPORT_CONSENT || '').trim();
   if (consent !== trigger) {
     throw new Error(`xmux claude send requires explicit $${trigger} first-token trigger transport consent`);
   }
@@ -2455,7 +2455,7 @@ function usage() {
   xmux claude sessions [--json]
   xmux claude start [--name <name>] [--split]
   xmux claude ensure-hooks [--json]
-  xmux claude send --trigger xmux-claude|xmux-claude! [--to <name>] [--title <text>] [--prompt <text>|--stdin] [--wait] [--json]
+  xmux claude send --trigger xmux-claude|xmux-claude! --transport-consent <trigger> [--to <name>] [--title <text>] [--prompt <text>|--stdin] [--wait] [--json]
   xmux claude send-codex --trigger xmux-codex [--from <name>] [--to <codex-session>] [--title <text>] [--prompt <text>|--stdin] [--json]
   xmux claude trigger-codex [--to <name>] [--prompt <text>|--stdin] [--json]
   xmux claude read <request_id> [--json]

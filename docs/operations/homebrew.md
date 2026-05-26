@@ -73,6 +73,14 @@ xmux doctor-xmux
 Code theme if that theme was previously installed or selected. Runtime state
 remains project-local under `<project>/.codex/xmux`.
 
+For Codex skill transport, setup writes `default_permissions = "xmux-workspace"`
+and an XMux-managed `[permissions.xmux-workspace]` profile. The profile keeps
+workspace writes scoped through `:workspace_roots`, permits normal `$TMPDIR`
+tool scratch writes, and allowlists the detected tmux Unix socket under
+`network.unix_sockets`. Because Codex permission profiles do not compose with
+the older `sandbox_mode` settings, setup removes XMux-relevant legacy sandbox
+keys from `~/.codex/config.toml` when it installs the profile.
+
 XMux does not inject custom Codex or Claude Code TUI colors. Runtime tmux chrome
 keeps the XMux status bar, copy/drag mode style, neutral pane separator lines,
 and provider-colored pane labels, while Codex and Claude Code render their own

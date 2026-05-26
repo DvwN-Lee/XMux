@@ -4,10 +4,14 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const { installedCodexSkillsDir } = require("../xmux/assets");
 
 const RULE_BEGIN = "# XMUX_COMMAND_RULE_BEGIN";
 const RULE_END = "# XMUX_COMMAND_RULE_END";
+const PERMISSIONS_BEGIN = "# XMUX_CODEX_PERMISSIONS_BEGIN";
+const PERMISSIONS_END = "# XMUX_CODEX_PERMISSIONS_END";
+const CODEX_PERMISSIONS_PROFILE = "xmux-workspace";
 const CODEX_HOOK_TAG_KEY = "XMUX_HOOK_TAG";
 const CODEX_HOOK_TAG_VALUE = "xmux-codex-harness";
 const SKILL_MARKER = ".xmux-managed-skill";
@@ -75,6 +79,173 @@ function parseTomlAssignmentValue(line, key) {
     }
   }
   return null;
+}
+
+function isTomlTableHeader(line) {
+  const stripped = String(line || "").trim();
+  return stripped.startsWith("[") && stripped.endsWith("]");
+}
+
+function tomlAssignmentKey(line) {
+  const match = String(line || "").match(/^\s*([A-Za-z0-9_.:-]+)\s*=/);
+  return match ? match[1] : "";
+}
+
+function removeTopLevelTomlAssignments(content, predicate) {
+  const lines = String(content || "").split("\n");
+  const out = [];
+  let inTopLevel = true;
+  for (const line of lines) {
+    const stripped = line.trim();
+    if (inTopLevel && isTomlTableHeader(stripped)) inTopLevel = false;
+    const key = inTopLevel ? tomlAssignmentKey(line) : "";
+    if (key && predicate(key, line)) continue;
+    out.push(line);
+  }
+  while (out.length && out[out.length - 1].trim() === "") out.pop();
+  return out.join("\n");
+}
+
+function hasTopLevelTomlAssignment(content, key, expectedValue = null) {
+  const lines = String(content || "").split("\n");
+  for (const line of lines) {
+    const stripped = line.trim();
+    if (isTomlTableHeader(stripped)) return false;
+    if (tomlAssignmentKey(line) !== key) continue;
+    if (expectedValue == null) return true;
+    return parseTomlAssignmentValue(line, key) === expectedValue;
+  }
+  return false;
+}
+
+function insertTopLevelTomlAssignment(content, assignment) {
+  let lines = String(content || "").split("\n");
+  if (lines.length === 1 && lines[0] === "") lines = [];
+  let firstTable = lines.findIndex((line) => isTomlTableHeader(line));
+  if (firstTable < 0) firstTable = lines.length;
+  const before = lines.slice(0, firstTable);
+  const after = lines.slice(firstTable);
+  while (before.length && before[before.length - 1].trim() === "") before.pop();
+  before.push(assignment);
+  if (!after.length) return `${before.join("\n").trimEnd()}\n`;
+  return `${before.join("\n")}\n\n${after.join("\n").trimEnd()}\n`;
+}
+
+function tmuxSocketFromEnv(env = process.env) {
+  const socket = String(env.TMUX || "").split(",", 1)[0].trim();
+  return socket && path.isAbsolute(socket) ? socket : "";
+}
+
+function detectTmuxSocket(opts = {}) {
+  if (opts.tmux_socket) {
+    const socket = expandUser(opts.tmux_socket);
+    if (!path.isAbsolute(socket)) throw userError(`tmux socket path must be absolute: ${opts.tmux_socket}`);
+    return socket;
+  }
+
+  const envSocket = tmuxSocketFromEnv();
+  if (envSocket) return envSocket;
+
+  const result = spawnSync("tmux", ["display-message", "-p", "#{socket_path}"], {
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  const socket = result.status === 0 ? String(result.stdout || "").trim() : "";
+  if (socket && path.isAbsolute(socket)) return socket;
+
+  if (typeof process.getuid === "function") {
+    const uid = process.getuid();
+    for (const candidate of [`/private/tmp/tmux-${uid}/default`, `/tmp/tmux-${uid}/default`]) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return process.platform === "darwin" ? `/private/tmp/tmux-${uid}/default` : `/tmp/tmux-${uid}/default`;
+  }
+  return "";
+}
+
+function removeLegacySandboxSettings(content) {
+  let next = removeTopLevelTomlAssignments(content, (key) => (
+    key === "sandbox_mode" || key.startsWith("sandbox_workspace_write.")
+  ));
+  next = removeTomlBlocks(next, (stripped) => (
+    stripped === "[sandbox_workspace_write]" || stripped.startsWith("[sandbox_workspace_write.")
+  ));
+  return next;
+}
+
+function codexPermissionProfileBlock(tmuxSocket) {
+  return [
+    PERMISSIONS_BEGIN,
+    `[permissions.${CODEX_PERMISSIONS_PROFILE}]`,
+    "",
+    `[permissions.${CODEX_PERMISSIONS_PROFILE}.filesystem]`,
+    '":minimal" = "read"',
+    '":tmpdir" = "write"',
+    "",
+    `[permissions.${CODEX_PERMISSIONS_PROFILE}.filesystem.":workspace_roots"]`,
+    '"." = "write"',
+    "",
+    `[permissions.${CODEX_PERMISSIONS_PROFILE}.network]`,
+    "enabled = true",
+    "",
+    `[permissions.${CODEX_PERMISSIONS_PROFILE}.network.domains]`,
+    "# Empty domain allowlist keeps public network requests blocked.",
+    "",
+    `[permissions.${CODEX_PERMISSIONS_PROFILE}.network.unix_sockets]`,
+    `${tomlQuote(tmuxSocket)} = "allow"`,
+    PERMISSIONS_END,
+  ].join("\n");
+}
+
+function removeCodexPermissionProfile(content) {
+  let next = removeMarkerBlock(content, PERMISSIONS_BEGIN, PERMISSIONS_END);
+  next = removeTomlBlocks(next, (stripped) => (
+    stripped === `[permissions.${CODEX_PERMISSIONS_PROFILE}]`
+    || stripped.startsWith(`[permissions.${CODEX_PERMISSIONS_PROFILE}.`)
+  ));
+  next = removeTopLevelTomlAssignments(next, (key, line) => (
+    key === "default_permissions"
+    && parseTomlAssignmentValue(line, "default_permissions") === CODEX_PERMISSIONS_PROFILE
+  ));
+  return next.trim() ? `${next.trimEnd()}\n` : "";
+}
+
+function ensureCodexPermissionProfile(content, tmuxSocket) {
+  if (!tmuxSocket) throw userError("tmux socket path could not be detected; start tmux or pass --tmux-socket");
+  let next = removeCodexPermissionProfile(content);
+  next = removeLegacySandboxSettings(next);
+  next = removeTopLevelTomlAssignments(next, (key) => key === "default_permissions");
+  next = insertTopLevelTomlAssignment(next, `default_permissions = ${tomlQuote(CODEX_PERMISSIONS_PROFILE)}`);
+  const block = codexPermissionProfileBlock(tmuxSocket);
+  return next.trim() ? `${next.trimEnd()}\n\n${block}\n` : `${block}\n`;
+}
+
+function hasLegacySandboxSettings(content) {
+  if (hasTopLevelTomlAssignment(content, "sandbox_mode")) return true;
+  const lines = String(content || "").split("\n");
+  let inTopLevel = true;
+  for (const line of lines) {
+    const stripped = line.trim();
+    if (isTomlTableHeader(stripped)) inTopLevel = false;
+    if (stripped === "[sandbox_workspace_write]" || stripped.startsWith("[sandbox_workspace_write.")) return true;
+    const key = inTopLevel ? tomlAssignmentKey(line) : "";
+    if (key && key.startsWith("sandbox_workspace_write.")) return true;
+  }
+  return false;
+}
+
+function contentHasCodexPermissionProfile(content, tmuxSocket) {
+  if (!tmuxSocket || hasLegacySandboxSettings(content)) return false;
+  return hasTopLevelTomlAssignment(content, "default_permissions", CODEX_PERMISSIONS_PROFILE)
+    && content.includes(`[permissions.${CODEX_PERMISSIONS_PROFILE}.filesystem]`)
+    && content.includes('":minimal" = "read"')
+    && content.includes('":tmpdir" = "write"')
+    && content.includes(`[permissions.${CODEX_PERMISSIONS_PROFILE}.filesystem.":workspace_roots"]`)
+    && content.includes('"." = "write"')
+    && content.includes(`[permissions.${CODEX_PERMISSIONS_PROFILE}.network]`)
+    && content.includes("enabled = true")
+    && content.includes(`[permissions.${CODEX_PERMISSIONS_PROFILE}.network.unix_sockets]`)
+    && content.includes(`${tomlQuote(tmuxSocket)} = "allow"`);
 }
 
 function xmuxRuntimeShellPath(installDir) {
@@ -304,6 +475,23 @@ function removeMarkerBlock(content, begin, end) {
   return out.join("\n");
 }
 
+function removeLegacyBareXmuxCommandRules(content) {
+  const lines = content.split("\n");
+  const out = [];
+  for (const line of lines) {
+    const stripped = line.trim();
+    if (stripped === 'prefix_rule(pattern=["xmux"], decision="allow")') {
+      if (out[out.length - 1] && out[out.length - 1].trim() === "# XMux wrapper. XMux skills still control operation scope.") {
+        out.pop();
+      }
+      continue;
+    }
+    out.push(line);
+  }
+  while (out.length && out[out.length - 1].trim() === "") out.pop();
+  return out.join("\n");
+}
+
 function codexHome(configPath) {
   return path.dirname(abs(configPath));
 }
@@ -328,13 +516,19 @@ function legacyCodexSkillsRoot(configPath) {
   return path.join(codexHome(configPath), "skills");
 }
 
-function installXmuxCommandRule(configPath) {
+function xmuxCommandRuleLine(xmuxInstallDir) {
+  const xmuxBin = path.join(abs(xmuxInstallDir), "bin", "xmux");
+  return `prefix_rule(pattern=[${JSON.stringify(xmuxBin)}], decision="allow")`;
+}
+
+function installXmuxCommandRule(configPath, xmuxInstallDir) {
   const filePath = rulesPath(configPath);
   let content = removeMarkerBlock(readText(filePath), RULE_BEGIN, RULE_END);
+  content = removeLegacyBareXmuxCommandRules(content);
   const block = [
     RULE_BEGIN,
-    "# Allow the scoped XMux wrapper command; user intent and XMux wrappers control operation scope.",
-    'prefix_rule(pattern=["xmux"], decision="allow")',
+    "# Allow only the configured XMux wrapper; XMux skills add transport consent.",
+    xmuxCommandRuleLine(xmuxInstallDir),
     RULE_END,
   ].join("\n");
   content = content.trim() ? `${content.trimEnd()}\n\n${block}\n` : `${block}\n`;
@@ -343,7 +537,7 @@ function installXmuxCommandRule(configPath) {
 
 function removeXmuxCommandRule(configPath) {
   const filePath = rulesPath(configPath);
-  const content = removeMarkerBlock(readText(filePath), RULE_BEGIN, RULE_END);
+  const content = removeLegacyBareXmuxCommandRules(removeMarkerBlock(readText(filePath), RULE_BEGIN, RULE_END));
   writeTextAtomic(filePath, content ? `${content}\n` : "");
 }
 
@@ -396,6 +590,26 @@ function xmuxVersionFromInstallDir(xmuxInstallDir) {
   return match ? match[1] : "";
 }
 
+function renderCodexSkillContent(content, xmuxInstallDir) {
+  const wrapper = path.join(abs(xmuxInstallDir), "bin", "xmux");
+  return String(content).replace(/\$XMUX_INSTALL_DIR\/bin\/xmux/g, wrapper);
+}
+
+function copyCodexSkillTree(source, dst, xmuxInstallDir) {
+  fs.mkdirSync(dst, { recursive: true });
+  for (const entry of fs.readdirSync(source).sort()) {
+    const sourcePath = path.join(source, entry);
+    const dstPath = path.join(dst, entry);
+    const stat = fs.statSync(sourcePath);
+    if (stat.isDirectory()) {
+      copyCodexSkillTree(sourcePath, dstPath, xmuxInstallDir);
+    } else if (stat.isFile()) {
+      const content = fs.readFileSync(sourcePath, "utf8");
+      writeTextAtomic(dstPath, renderCodexSkillContent(content, xmuxInstallDir));
+    }
+  }
+}
+
 function installXmuxSkills(configPath, xmuxInstallDir, opts = {}) {
   const root = skillsRoot(configPath);
   const sources = xmuxSkillSources(xmuxInstallDir, opts.skills_dir || "");
@@ -425,7 +639,7 @@ function installXmuxSkills(configPath, xmuxInstallDir, opts = {}) {
     if (!dryRun) {
       fs.rmSync(dst, { recursive: true, force: true });
       fs.mkdirSync(root, { recursive: true });
-      fs.cpSync(source, dst, { recursive: true });
+      copyCodexSkillTree(source, dst, xmuxInstallDir);
       writeTextAtomic(path.join(dst, SKILL_MARKER), `${abs(source)}\n`);
     }
     installed.push(name);
@@ -641,11 +855,11 @@ function contentHasShellEnvironment(content, xmuxInstallDir) {
     && content.includes(installBin);
 }
 
-function rulesHaveXmuxCommand(configPath) {
+function rulesHaveXmuxCommand(configPath, xmuxInstallDir) {
   const content = readText(rulesPath(configPath));
   return content.includes(RULE_BEGIN)
     && content.includes(RULE_END)
-    && content.includes('prefix_rule(pattern=["xmux"], decision="allow")');
+    && content.includes(xmuxCommandRuleLine(xmuxInstallDir));
 }
 
 function installedSkillNames(configPath) {
@@ -658,7 +872,37 @@ function installedSkillNames(configPath) {
   );
 }
 
-function codexDiagnostics(configPath, xmuxInstallDir, skillsDir = "") {
+function listSkillFiles(root) {
+  const out = [];
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) return out;
+  function walk(dir, prefix = "") {
+    for (const entry of fs.readdirSync(dir).sort()) {
+      if (entry === SKILL_MARKER) continue;
+      const fullPath = path.join(dir, entry);
+      const relativePath = prefix ? path.join(prefix, entry) : entry;
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) walk(fullPath, relativePath);
+      else if (stat.isFile()) out.push(relativePath);
+    }
+  }
+  walk(root);
+  return out;
+}
+
+function skillTreesMatch(source, installed, xmuxInstallDir) {
+  const sourceFiles = listSkillFiles(source);
+  const installedFiles = listSkillFiles(installed);
+  if (sourceFiles.length !== installedFiles.length) return false;
+  for (let i = 0; i < sourceFiles.length; i += 1) {
+    if (sourceFiles[i] !== installedFiles[i]) return false;
+    const sourceContent = renderCodexSkillContent(readText(path.join(source, sourceFiles[i])), xmuxInstallDir);
+    const installedContent = readText(path.join(installed, installedFiles[i]));
+    if (sourceContent !== installedContent) return false;
+  }
+  return true;
+}
+
+function codexDiagnostics(configPath, xmuxInstallDir, skillsDir = "", opts = {}) {
   const content = readText(configPath);
   const issues = [];
   const notes = [];
@@ -670,23 +914,39 @@ function codexDiagnostics(configPath, xmuxInstallDir, skillsDir = "") {
   if (contentHasShellEnvironment(content, xmuxInstallDir)) notes.push(["OK", "Codex shell PATH includes XMux bin"]);
   else issues.push("Codex shell PATH/XMUX_INSTALL_DIR setup is missing or stale");
 
-  if (rulesHaveXmuxCommand(configPath)) notes.push(["OK", `scoped xmux command rule exists in ${rulesPath(configPath)}`]);
+  if (rulesHaveXmuxCommand(configPath, xmuxInstallDir)) notes.push(["OK", `scoped xmux command rule exists in ${rulesPath(configPath)}`]);
   else issues.push("scoped xmux command rule is missing");
+
+  const tmuxSocket = detectTmuxSocket({ tmux_socket: opts.tmux_socket || "" });
+  if (!tmuxSocket) {
+    warnings.push("tmux socket path could not be detected; Codex permission profile was not validated");
+  } else if (contentHasCodexPermissionProfile(content, tmuxSocket)) {
+    notes.push(["OK", `Codex permission profile allows tmux socket ${tmuxSocket}`]);
+  } else {
+    issues.push(`Codex permission profile is missing or stale for tmux socket ${tmuxSocket}; run xmux setup-xmux --refresh`);
+  }
 
   if (codexHooksHaveXmux(configPath)) notes.push(["OK", `Codex global hooks installed in ${hooksPath(configPath)}`]);
   else issues.push(`Codex global hooks are missing or incomplete in ${hooksPath(configPath)}`);
 
-  const sourceNames = new Set(xmuxSkillSources(xmuxInstallDir, skillsDir).map(([name]) => name));
+  const sourceEntries = xmuxSkillSources(xmuxInstallDir, skillsDir);
+  const sourceNames = new Set(sourceEntries.map(([name]) => name));
   const installedNames = installedSkillNames(configPath);
   const missing = [...sourceNames].filter((name) => !installedNames.has(name)).sort();
   if (missing.length) issues.push(`missing XMux Codex skills: ${missing.join(", ")}`);
-  else notes.push(["OK", `XMux Codex skills installed under ${skillsRoot(configPath)}`]);
+  const installedRoot = skillsRoot(configPath);
+  const stale = sourceEntries
+    .filter(([name, source]) => installedNames.has(name) && !skillTreesMatch(source, path.join(installedRoot, name), xmuxInstallDir))
+    .map(([name]) => name)
+    .sort();
+  if (stale.length) issues.push(`stale XMux Codex skills: ${stale.join(", ")}; run xmux setup-xmux --refresh`);
+  else if (!missing.length) notes.push(["OK", `XMux Codex skills installed under ${installedRoot}`]);
 
   return { issues, notes, warnings };
 }
 
-function doctorCodex(configPath, xmuxInstallDir, skillsDir = "", quiet = false) {
-  const { issues, notes, warnings } = codexDiagnostics(configPath, xmuxInstallDir, skillsDir);
+function doctorCodex(configPath, xmuxInstallDir, skillsDir = "", quiet = false, opts = {}) {
+  const { issues, notes, warnings } = codexDiagnostics(configPath, xmuxInstallDir, skillsDir, opts);
 
   if (quiet) return issues.length ? 1 : 0;
   if (issues.length) {
@@ -714,9 +974,11 @@ function parseArgs(argv) {
     ref: "",
     force: false,
     refresh: false,
+    with_codex_permissions: false,
     dry_run: false,
     home: "",
     project: "",
+    tmux_socket: "",
     xmux_install_dir: "",
   };
   for (let i = 0; i < argv.length;) {
@@ -726,10 +988,11 @@ function parseArgs(argv) {
     else if (arg === "--quiet") { opts.quiet = true; i += 1; }
     else if (arg === "--with-skills") { opts.with_skills = true; i += 1; }
     else if (arg === "--without-skills") { opts.skip_skills = true; i += 1; }
+    else if (arg === "--with-codex-permissions") { opts.with_codex_permissions = true; i += 1; }
     else if (arg === "--force") { opts.force = true; i += 1; }
     else if (arg === "--refresh") { opts.refresh = true; opts.force = true; i += 1; }
     else if (arg === "--dry-run") { opts.dry_run = true; i += 1; }
-    else if (["--skills-dir", "--ref", "--home", "--project", "--xmux-install-dir"].includes(arg) && i + 1 < argv.length) {
+    else if (["--skills-dir", "--ref", "--home", "--project", "--tmux-socket", "--xmux-install-dir"].includes(arg) && i + 1 < argv.length) {
       opts[arg.slice(2).replace(/-/g, "_")] = expandUser(argv[i + 1]);
       i += 2;
     } else if (arg.startsWith("--mcp") || arg === "--cache-mcp" || arg === "--no-cache-mcp" || arg === "--from-github" || arg === "--server-path") {
@@ -766,6 +1029,7 @@ function main(argv = process.argv.slice(2)) {
   if (opts.remove) {
     let content = removeObsoleteXmuxConfig(readText(configPath));
     content = removeCodexShellEnvironment(content, xmuxInstallDir);
+    content = removeCodexPermissionProfile(content);
     if (!opts.dry_run) {
       removeXmuxCommandRule(configPath);
     }
@@ -778,7 +1042,9 @@ function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  if (opts.doctor) return doctorCodex(configPath, xmuxInstallDir, opts.skills_dir, opts.quiet);
+  if (opts.doctor) return doctorCodex(configPath, xmuxInstallDir, opts.skills_dir, opts.quiet, {
+    tmux_socket: opts.tmux_socket,
+  });
 
   let content = readText(configPath);
   const globalConfig = path.join(os.homedir(), ".codex", "config.toml");
@@ -787,6 +1053,9 @@ function main(argv = process.argv.slice(2)) {
   }
 
   content = ensureCodexShellEnvironment(content, xmuxInstallDir);
+  if (opts.with_codex_permissions) {
+    content = ensureCodexPermissionProfile(content, detectTmuxSocket({ tmux_socket: opts.tmux_socket }));
+  }
   if (!opts.dry_run) writeTextAtomic(configPath, content);
 
   const shouldInstallSkills = !opts.skip_skills
@@ -802,12 +1071,13 @@ function main(argv = process.argv.slice(2)) {
     })
     : { installed: [], skipped: [] };
 
-  if (!opts.dry_run) installXmuxCommandRule(configPath);
+  if (!opts.dry_run) installXmuxCommandRule(configPath, xmuxInstallDir);
 
   console.log(`${opts.dry_run ? "[DRY-RUN]" : "[OK]"} Wrote XMux Codex shell integration to ${configPath}`);
   console.log(`     xmux_install_dir: ${xmuxInstallDir}`);
   console.log(`     xmux_project_dir: ${defaultProjectDir()}`);
   console.log("     xmux_state_dir: inherited from xmux-launched Codex runtime");
+  if (opts.with_codex_permissions) console.log(`     codex_permissions: ${CODEX_PERMISSIONS_PROFILE}`);
   if (skillResult.installed.length) console.log(`     skills: ${skillResult.installed.join(", ")}`);
   else if (shouldInstallSkills && skillResult.skipped.length) console.log("     skills: no changes");
   else if (shouldInstallSkills) console.log("     skills: no importable XMux skills found");
@@ -830,6 +1100,10 @@ module.exports = {
   main,
   codexDiagnostics,
   codexPluginHookDiagnostics,
+  detectTmuxSocket,
+  ensureCodexPermissionProfile,
+  removeCodexPermissionProfile,
+  contentHasCodexPermissionProfile,
   ensureCodexShellEnvironment,
   removeCodexShellEnvironment,
   pathWithXmuxBin,

@@ -30,12 +30,17 @@ xmux doctor --log-lines 0
 Run them from the target project cwd, or set `XMUX_PROJECT_DIR` and
 `XMUX_STATE_DIR`, so state resolves to the correct project.
 
+For skill-triggered sends, `xmux doctor-xmux` should report that the Codex
+`xmux-workspace` permission profile allows the active tmux socket. If it
+reports a stale socket allowlist, rerun `xmux setup-xmux --refresh` from the
+tmux-backed environment that launches Codex.
+
 ## Communication Checks
 
 Use a bounded real Claude check:
 
 ```zsh
-xmux claude send --trigger xmux-claude --title "Plan validation" --prompt "Ask Claude to validate the current plan." --quiet
+xmux claude send --trigger xmux-claude --transport-consent xmux-claude --title "Plan validation" --prompt "Ask Claude to validate the current plan." --quiet
 ```
 
 `xmux claude send` ensures XMux-managed hooks and the split-pane Claude TUI
@@ -59,9 +64,9 @@ For Codex-to-Codex operator checks, use `xmux send-pane` (socket-backed via
 `xmux codex send`):
 
 ```zsh
-xmux send-pane <session> -- "diagnostic prompt"
-xmux send-pane <project>/<session> --clear -- "replace prompt and send"
-xmux send-pane --to <session> --stdin
+xmux send-pane <session> --transport-consent xmux-send -- "diagnostic prompt"
+xmux send-pane <project>/<session> --transport-consent xmux-send --clear -- "replace prompt and send"
+xmux send-pane --to <session> --transport-consent xmux-send --stdin
 ```
 
 `xmux send-pane` targets only XMux-managed Codex sessions and blocks self-send

@@ -407,9 +407,13 @@ function parseArgs(argv) {
     without_claude: false,
     without_skills: false,
     with_skills: true,
+    without_codex_permissions: false,
+    with_codex_permissions: true,
     ref: '',
     home: '',
     project: '',
+    skills_dir: '',
+    tmux_socket: '',
     xmux_install_dir: '',
   };
   for (let i = 0; i < argv.length;) {
@@ -427,7 +431,9 @@ function parseArgs(argv) {
     else if (arg === '--without-claude') { opts.without_claude = true; i += 1; }
     else if (arg === '--with-skills') { opts.with_skills = true; opts.without_skills = false; i += 1; }
     else if (arg === '--without-skills') { opts.without_skills = true; opts.with_skills = false; i += 1; }
-    else if ((arg === '--ref' || arg === '--home' || arg === '--project' || arg === '--xmux-install-dir') && i + 1 < argv.length) {
+    else if (arg === '--with-codex-permissions') { opts.with_codex_permissions = true; opts.without_codex_permissions = false; i += 1; }
+    else if (arg === '--without-codex-permissions') { opts.without_codex_permissions = true; opts.with_codex_permissions = false; i += 1; }
+    else if ((arg === '--ref' || arg === '--home' || arg === '--project' || arg === '--skills-dir' || arg === '--tmux-socket' || arg === '--xmux-install-dir') && i + 1 < argv.length) {
       opts[arg.slice(2).replace(/-/g, '_')] = argv[i + 1];
       i += 2;
     } else {
@@ -467,10 +473,17 @@ async function main(argv = process.argv.slice(2)) {
     const codexArgs = ['--doctor', ...(opts.quiet || opts.json ? ['--quiet'] : [])];
     if (opts.home) codexArgs.push('--home', opts.home);
     if (opts.project) codexArgs.push('--project', opts.project);
+    if (opts.skills_dir || process.env.XMUX_CODEX_SKILLS_DIR) {
+      codexArgs.push('--skills-dir', opts.skills_dir || process.env.XMUX_CODEX_SKILLS_DIR);
+    }
+    if (opts.tmux_socket) codexArgs.push('--tmux-socket', opts.tmux_socket);
     codexArgs.push('--xmux-install-dir', xmuxInstallDir);
+    const codexSkillsDir = opts.skills_dir || process.env.XMUX_CODEX_SKILLS_DIR || '';
     const codexDiag = opts.without_codex
       ? { issues: [], warnings: [], notes: [] }
-      : codexDiagnostics(resolveCodexConfigPath({ home: opts.home, project: opts.project }), xmuxInstallDir);
+      : codexDiagnostics(resolveCodexConfigPath({ home: opts.home, project: opts.project }), xmuxInstallDir, codexSkillsDir, {
+        tmux_socket: opts.tmux_socket,
+      });
     const codex = opts.without_codex
       ? 0
       : (opts.json ? (codexDiag.issues.length ? 1 : 0) : codexSetupMain(codexArgs));
@@ -532,11 +545,16 @@ async function main(argv = process.argv.slice(2)) {
 
   const codexArgs = [
     ...(opts.without_skills ? ['--without-skills'] : ['--with-skills']),
+    ...(opts.with_codex_permissions && !opts.without_codex_permissions ? ['--with-codex-permissions'] : []),
     ...(opts.dry_run ? ['--dry-run'] : []),
     ...(opts.refresh ? ['--refresh'] : []),
   ];
   if (opts.home) codexArgs.push('--home', opts.home);
   if (opts.project) codexArgs.push('--project', opts.project);
+  if (opts.skills_dir || process.env.XMUX_CODEX_SKILLS_DIR) {
+    codexArgs.push('--skills-dir', opts.skills_dir || process.env.XMUX_CODEX_SKILLS_DIR);
+  }
+  if (opts.tmux_socket) codexArgs.push('--tmux-socket', opts.tmux_socket);
   if (opts.ref) codexArgs.push('--ref', opts.ref);
   codexArgs.push('--xmux-install-dir', xmuxInstallDir);
   const project = opts.project ? abs(opts.project) : projectRoot();
