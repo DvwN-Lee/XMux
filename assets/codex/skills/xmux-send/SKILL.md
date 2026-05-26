@@ -81,7 +81,7 @@ target: <target>
 Then send through the single command path:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" send-pane <target> --transport-consent xmux-send --json -- "<full marked prompt>"
+"$XMUX_INSTALL_DIR/bin/xmux" send-pane --to <target> --prompt "<full marked prompt>" --transport-consent xmux-send --json
 ```
 
 Use `--transport-consent 'xmux-send!'` for raw mode.

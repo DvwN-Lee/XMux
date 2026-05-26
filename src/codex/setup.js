@@ -341,11 +341,43 @@ function isXmuxOwnedBinPath(candidatePath, currentXmuxBin) {
     || isHomebrewXmuxLibexecBinPath(candidatePath);
 }
 
+function homebrewWrapperBinForInstallDir(xmuxInstallDir) {
+  const installDir = abs(xmuxInstallDir);
+  const parts = installDir.split(path.sep).filter(Boolean);
+  const prefix = installDir.startsWith(path.sep) ? `${path.sep}${parts[0]}${path.sep}${parts[1]}` : "";
+  if (!HOMEBREW_PREFIXES.includes(prefix)) return "";
+  const rest = parts.slice(2);
+  if (
+    rest.length === 3
+    && rest[0] === "opt"
+    && XMUX_HOMEBREW_FORMULAS.includes(rest[1])
+    && rest[2] === "libexec"
+  ) {
+    return path.join(prefix, "bin");
+  }
+  if (
+    rest.length === 4
+    && rest[0] === "Cellar"
+    && XMUX_HOMEBREW_FORMULAS.includes(rest[1])
+    && rest[3] === "libexec"
+  ) {
+    return path.join(prefix, "bin");
+  }
+  return "";
+}
+
+function xmuxCommandBinForInstallDir(xmuxInstallDir) {
+  return homebrewWrapperBinForInstallDir(xmuxInstallDir) || path.join(abs(xmuxInstallDir), "bin");
+}
+
 function pathWithXmuxBin(xmuxInstallDir, basePath = null) {
   const xmuxBin = path.join(abs(xmuxInstallDir), "bin");
+  const commandBin = xmuxCommandBinForInstallDir(xmuxInstallDir);
   const source = basePath == null ? resolvePathWithNode() : basePath;
-  const parts = source.split(":").filter((part) => part && !isXmuxOwnedBinPath(part, xmuxBin));
-  return [xmuxBin, ...parts].join(":");
+  const parts = source
+    .split(":")
+    .filter((part) => part && !isXmuxOwnedBinPath(part, xmuxBin) && abs(part) !== abs(commandBin));
+  return [commandBin, ...parts].join(":");
 }
 
 function ensureCodexShellEnvironment(content, xmuxInstallDir) {
@@ -849,10 +881,10 @@ function codexPluginHookDiagnostics(configPath) {
 }
 
 function contentHasShellEnvironment(content, xmuxInstallDir) {
-  const installBin = path.join(abs(xmuxInstallDir), "bin");
+  const commandBin = xmuxCommandBinForInstallDir(xmuxInstallDir);
   return content.includes("[shell_environment_policy.set]")
     && content.includes(`XMUX_INSTALL_DIR = "${abs(xmuxInstallDir)}"`)
-    && content.includes(installBin);
+    && content.includes(commandBin);
 }
 
 function rulesHaveXmuxCommand(configPath, xmuxInstallDir) {
@@ -911,7 +943,7 @@ function codexDiagnostics(configPath, xmuxInstallDir, skillsDir = "", opts = {})
   if (!fs.existsSync(configPath)) issues.push(`missing config: ${configPath}`);
   else notes.push(["OK", "Codex config exists"]);
 
-  if (contentHasShellEnvironment(content, xmuxInstallDir)) notes.push(["OK", "Codex shell PATH includes XMux bin"]);
+  if (contentHasShellEnvironment(content, xmuxInstallDir)) notes.push(["OK", "Codex shell PATH includes XMux command bin"]);
   else issues.push("Codex shell PATH/XMUX_INSTALL_DIR setup is missing or stale");
 
   if (rulesHaveXmuxCommand(configPath, xmuxInstallDir)) notes.push(["OK", `scoped xmux command rule exists in ${rulesPath(configPath)}`]);
@@ -1107,6 +1139,7 @@ module.exports = {
   ensureCodexShellEnvironment,
   removeCodexShellEnvironment,
   pathWithXmuxBin,
+  xmuxCommandBinForInstallDir,
   isXmuxOwnedBinPath,
   installXmuxCommandRule,
   removeXmuxCommandRule,

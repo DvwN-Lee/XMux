@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.3 - 2026-05-27
+
+- Fixed Homebrew Codex PATH setup so `xmux setup-xmux --refresh` keeps
+  `/opt/homebrew/bin` as the command path while preserving
+  `XMUX_INSTALL_DIR=/opt/homebrew/opt/xmux/libexec`.
+- Removed stale XMux Homebrew `libexec/bin` entries from regenerated Codex
+  shell PATH values to avoid shadowing the Homebrew wrapper.
+
 ## 1.0.2 - 2026-05-27
 
 - Added the `xmux-implement` workflow ledger, evidence capture, risk
