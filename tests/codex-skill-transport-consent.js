@@ -45,6 +45,7 @@ const sourceWrapper = "$XMUX_INSTALL_DIR/bin/xmux";
 const installedWrapper = path.join(repoRoot, "bin", "xmux");
 
 assertCodexSkillUsesConsent("xmux-claude", "xmux-claude", "claude send", sourceSkillsRoot, sourceWrapper);
+assertCodexSkillUsesConsent("xmux-implement", "xmux-implement", "claude send", sourceSkillsRoot, sourceWrapper);
 assertCodexSkillUsesConsent("xmux-send", "xmux-send", "send-pane", sourceSkillsRoot, sourceWrapper);
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "xmux-skill-consent-"));
@@ -72,7 +73,7 @@ try {
     `setup should install consent-gated skills in fake HOME\nstdout:\n${setup.stdout}\nstderr:\n${setup.stderr}`,
   );
   const installedRoot = path.join(fakeHome, ".agents", "skills");
-  for (const name of ["xmux-claude", "xmux-send"]) {
+  for (const name of ["xmux-claude", "xmux-implement", "xmux-send"]) {
     assert.equal(
       fs.existsSync(path.join(installedRoot, name, ".xmux-managed-skill")),
       true,
@@ -80,6 +81,7 @@ try {
     );
   }
   assertCodexSkillUsesConsent("xmux-claude", "xmux-claude", "claude send", installedRoot, installedWrapper);
+  assertCodexSkillUsesConsent("xmux-implement", "xmux-implement", "claude send", installedRoot, installedWrapper);
   assertCodexSkillUsesConsent("xmux-send", "xmux-send", "send-pane", installedRoot, installedWrapper);
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });

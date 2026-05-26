@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.2 - 2026-05-27
+
+- Added the `xmux-implement` workflow ledger, evidence capture, risk
+  classification, route-event provenance, and completion gate.
+- Added phase markers such as `[xmux-claude-review]` and executor-event
+  verification so Claude-owned phases require the configured subagent, not only
+  a main Claude response.
+- Added managed Claude phase agents including `xmux-review`,
+  `xmux-plan-critique`, `xmux-verification-contract`, `xmux-final-signoff`, and
+  `xmux-stuck`.
+- Added workflow CLI commands under `xmux workflow`.
+
 ## 1.0.1 - 2026-05-26
 
 - Fixed Homebrew Codex doctor checks so the scoped XMux command rule is matched

@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { claudeSkillFile } = require('../xmux/assets');
+const { claudeAgentsDir, claudeSkillFile } = require('../xmux/assets');
 
 const COMMAND_NAME = 'xmux-codex';
 const THEME_NAME = 'xmux-claude-code';
@@ -12,6 +12,7 @@ const THEME_SETTING_VALUE = `custom:${THEME_NAME}`;
 const HOOK_TAG_KEY = 'XMUX_HOOK_TAG';
 const HOOK_TAG_VALUE = 'xmux-claude-harness';
 const MANAGED_SKILL_MARKER = '.xmux-managed-skill';
+const MANAGED_AGENT_MARKER = '.xmux-managed-agent';
 const MANAGED_THEME_MARKER = '.xmux-managed-theme-xmux-claude-code';
 const LEGACY_MANAGED_SKILL_MARKER = '<!-- XMUX_MANAGED_CLAUDE_XMUX_CODEX_SKILL -->';
 const MANAGED_COMMAND_MARKER = '<!-- XMUX_MANAGED_CLAUDE_XMUX_CODEX_COMMAND -->';
@@ -105,6 +106,8 @@ function shellQuote(value) {
 function hookSubcommandForEvent(eventName) {
   if (eventName === 'SessionStart') return 'session-start';
   if (eventName === 'Stop') return 'stop';
+  if (eventName === 'PreToolUse') return 'pre-tool-use';
+  if (eventName === 'SubagentStop') return 'subagent-stop';
   if (eventName === 'UserPromptExpansion') return 'user-prompt-expansion';
   return 'user-prompt';
 }
@@ -179,6 +182,15 @@ function managedClaudeSkillContent() {
   const asset = claudeSkillFile(installRoot(), COMMAND_NAME);
   if (fs.existsSync(asset)) return fs.readFileSync(asset, 'utf8');
   throw new Error(`missing managed Claude skill asset: ${asset}`);
+}
+
+function managedClaudeAgentSources() {
+  const root = claudeAgentsDir(installRoot());
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) return [];
+  return fs.readdirSync(root)
+    .sort()
+    .filter((name) => name.startsWith('xmux-') && name.endsWith('.md'))
+    .map((name) => [name, path.join(root, name)]);
 }
 
 function claudeSkillManaged(skillDir) {
@@ -270,6 +282,24 @@ function ensureManagedClaudeSkillGlobal(opts = {}) {
   return skillFile;
 }
 
+function ensureManagedClaudeAgentsGlobal(opts = {}) {
+  const agentRoot = path.join(claudeHome(), 'agents');
+  const installed = [];
+  for (const [name, source] of managedClaudeAgentSources()) {
+    const dst = path.join(agentRoot, name);
+    const marker = path.join(agentRoot, `${name}.${MANAGED_AGENT_MARKER}`);
+    if (fs.existsSync(dst) && !fs.existsSync(marker)) {
+      throw new Error(`refusing to overwrite unmanaged Claude agent: ${dst}`);
+    }
+    if (!opts.dry_run) {
+      writeTextAtomic(dst, fs.readFileSync(source, 'utf8'));
+      writeTextAtomic(marker, `${source}\n`);
+    }
+    installed.push(name.replace(/\.md$/, ''));
+  }
+  return installed;
+}
+
 function ensureHooks(opts = {}) {
   if (opts.dry_run) {
     const status = claudeStatus();
@@ -282,6 +312,7 @@ function ensureHooks(opts = {}) {
     return 0;
   }
   const skillFile = ensureManagedClaudeSkillGlobal();
+  const agents = ensureManagedClaudeAgentsGlobal();
   const settingsFile = path.join(claudeHome(), 'settings.json');
   const settings = readJson(settingsFile, {});
   const removedThemeSetting = removeManagedClaudeThemeSelection(settings);
@@ -296,6 +327,8 @@ function ensureHooks(opts = {}) {
   ensureHookList(settings, 'SessionStart', `${env} ${shellQuote(xmuxBin)} claude hook session-start`);
   ensureHookList(settings, 'UserPromptSubmit', `${env} ${shellQuote(xmuxBin)} claude hook user-prompt`);
   ensureHookList(settings, 'UserPromptExpansion', `${env} ${shellQuote(xmuxBin)} claude hook user-prompt-expansion`);
+  ensureHookList(settings, 'PreToolUse', `${env} ${shellQuote(xmuxBin)} claude hook pre-tool-use`, 'Agent|Task');
+  ensureHookList(settings, 'SubagentStop', `${env} ${shellQuote(xmuxBin)} claude hook subagent-stop`);
   ensureHookList(settings, 'Stop', `${env} ${shellQuote(xmuxBin)} claude hook stop`);
   writeJson(settingsFile, settings);
   if (opts.quiet) return 0;
@@ -304,6 +337,7 @@ function ensureHooks(opts = {}) {
       status: 'ok',
       settings: settingsFile,
       skill: skillFile,
+      agents,
       removedTheme: removedTheme.removed ? removedTheme.path : null,
       removedThemeSetting,
     }, null, 2));
@@ -400,7 +434,7 @@ function claudeDiagnostics() {
   const status = claudeStatus();
   const issues = [];
   const notes = [];
-  if (status.hookCount >= 4) notes.push(['OK', `Claude global hooks installed in ${status.settingsFile}`]);
+  if (status.hookCount >= 6) notes.push(['OK', `Claude global hooks installed in ${status.settingsFile}`]);
   else issues.push(`Claude global hooks missing or incomplete in ${status.settingsFile}`);
   if (status.skillManaged) notes.push(['OK', `Claude xmux-codex skill installed at ${status.skillFile}`]);
   else issues.push(`Claude xmux-codex skill missing or unmanaged at ${status.skillFile}`);

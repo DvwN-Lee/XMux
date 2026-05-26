@@ -1,6 +1,6 @@
 {
   "name": "xmux",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "XMux communication harness for Codex and Claude",
   "bin": {
     "xmux": "bin/xmux",
@@ -15,7 +15,9 @@
     "dist/claude",
     "dist/xmux",
     "assets/codex/skills/xmux-claude",
+    "assets/codex/skills/xmux-implement",
     "assets/codex/skills/xmux-send",
+    "assets/claude/agents",
     "assets/claude/skills/xmux-codex",
     "runtime/codex",
     "runtime/claude",

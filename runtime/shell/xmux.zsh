@@ -35,7 +35,7 @@ else
   XMUX_STATE_DIR_EXPLICIT=0
 fi
 
-XMUX_VERSION="1.0.1"
+XMUX_VERSION="1.0.2"
 
 _xmux_project_root() {
   local dir="${1:-$PWD}"
@@ -84,6 +84,7 @@ Usage:
   xmux stop <session>
   xmux sessions
   xmux send-pane <session> "<text>" --transport-consent xmux-send [--clear] [--no-enter] [--force] [--json]
+  xmux workflow <start|classify|evidence|phase|finding|contract|gate|show> <args...>
   xmux claude <args...>
   xmux codex <args...>
   xmux setup-xmux [--with-skills|--without-skills] [--with-codex-permissions|--without-codex-permissions] [--refresh] [--dry-run] [--without-codex] [--without-claude]
@@ -444,6 +445,30 @@ _xmux_run_setup_script() {
     return 1
   }
   XMUX_INSTALL_DIR="$XMUX_INSTALL_DIR" node "$script" --xmux-install-dir "$XMUX_INSTALL_DIR" "$@"
+}
+
+_xmux_workflow_script_path() {
+  local candidate
+  for candidate in \
+      "$XMUX_INSTALL_DIR/dist/xmux/workflow-cli.js" \
+      "$XMUX_INSTALL_DIR/src/xmux/workflow-cli.js"; do
+    [[ -f "$candidate" ]] || continue
+    print -r -- "$candidate"
+    return 0
+  done
+  return 1
+}
+
+_xmux_cmd_workflow() {
+  local script
+  script="$(_xmux_workflow_script_path)" || {
+    echo "error: missing XMux workflow CLI under $XMUX_INSTALL_DIR." >&2
+    return 1
+  }
+  XMUX_INSTALL_DIR="$XMUX_INSTALL_DIR" \
+    XMUX_PROJECT_DIR="$XMUX_PROJECT_DIR" \
+    XMUX_STATE_DIR="$XMUX_STATE_DIR" \
+    node "$script" "$@"
 }
 
 _xmux_cmd_setup_xmux() {
@@ -927,6 +952,10 @@ xmux() {
     send-pane)
       shift
       _xmux_cmd_send_pane "$@"
+      ;;
+    workflow)
+      shift
+      _xmux_cmd_workflow "$@"
       ;;
     claude)
       shift

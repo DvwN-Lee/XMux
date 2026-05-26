@@ -16,6 +16,7 @@ This refreshes XMux-managed global assets:
 
 ```text
 ~/.agents/skills/xmux-claude/
+~/.agents/skills/xmux-implement/
 ~/.agents/skills/xmux-send/
 ~/.claude/skills/xmux-codex/
 ```
@@ -24,6 +25,7 @@ The Codex skill is sourced from the installed bundle:
 
 ```text
 <XMUX_INSTALL_DIR>/assets/codex/skills/xmux-claude/
+<XMUX_INSTALL_DIR>/assets/codex/skills/xmux-implement/
 <XMUX_INSTALL_DIR>/assets/codex/skills/xmux-send/
 ```
 
@@ -36,6 +38,8 @@ The Claude skill is sourced from:
 Codex skill triggers are explicit-first-token only:
 
 - `$xmux-claude` / `$xmux-claude!` for Claude harness routing.
+- `$xmux-implement` for the evidence-gated Codex implementation workflow:
+  `implement-core -> verify -> Claude review -> gate`.
 - `$xmux-send <target> <instruction>` / `$xmux-send! <target> <literal prompt>`
   for Codex-to-Codex sends through
   `xmux send-pane <target> --transport-consent xmux-send --json -- ...`.
@@ -47,7 +51,8 @@ starts with one of the explicit triggers, the Codex skill runs the single
 absolute wrapper command needed for that transport inside the configured Codex
 sandbox:
 `$XMUX_INSTALL_DIR/bin/xmux claude send --transport-consent ...` for
-`$xmux-claude` and
+`$xmux-claude`, `$XMUX_INSTALL_DIR/bin/xmux workflow ...` plus Claude review
+handoff for `$xmux-implement`, and
 `$XMUX_INSTALL_DIR/bin/xmux send-pane --transport-consent ...` for
 `$xmux-send`. Without the
 explicit first-token trigger, the skill must not send by another route. The

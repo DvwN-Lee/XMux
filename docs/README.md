@@ -8,6 +8,7 @@ XMux docs are grouped by operating area.
 
 - [Repository layout](runtime/repository-layout.md)
 - [Codex lead runtime](runtime/codex-lead.md)
+- [Workflow gates](runtime/workflows.md)
 
 ## Claude Harness
 

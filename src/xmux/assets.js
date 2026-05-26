@@ -23,6 +23,10 @@ function claudeSkillsDir(installRoot) {
   return path.join(abs(installRoot), 'assets', 'claude', 'skills');
 }
 
+function claudeAgentsDir(installRoot) {
+  return path.join(abs(installRoot), 'assets', 'claude', 'agents');
+}
+
 function claudeSkillFile(installRoot, name = 'xmux-codex') {
   return path.join(claudeSkillsDir(installRoot), name, 'SKILL.md');
 }
@@ -54,6 +58,7 @@ function githubCodexSkillsDir(extractedRoot) {
 module.exports = {
   codexSkillsDir,
   claudeSkillsDir,
+  claudeAgentsDir,
   claudeSkillFile,
   installedCodexSkillsDir,
   githubCodexSkillsDir,

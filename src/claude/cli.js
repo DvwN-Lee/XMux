@@ -14,6 +14,17 @@ const {
   writeLegacySessionMirror,
   writeUnifiedSession,
 } = require('../xmux/session-state');
+const {
+  appendExecutorEvent,
+  appendRouteEvent,
+  findExecutorEvent,
+} = require('../xmux/workflow-state');
+const {
+  markerEntry,
+  parsePhaseMarker,
+  phaseEntry,
+  phaseMarker,
+} = require('../xmux/phase-registry');
 
 const SCHEMA_SESSION = 'xmux.claude.session.v1';
 const SCHEMA_REQUEST = 'xmux.claude.request.v2';
@@ -870,8 +881,9 @@ async function waitForPaneReady(name, expectedLaunchId, launchedAfterMs, opts = 
   throw new Error(`Claude SessionStart hook did not report ready for ${name} within ${timeoutMs}ms; run xmux claude ensure-hooks or set --fallback-startup-delay for compatibility`);
 }
 
-function composeCommand(_request, body = '') {
-  return `${CODEX_REQUEST_MARKER}\n\n${canonicalPrompt(body)}`;
+function composeCommand(request = {}, body = '') {
+  const marker = request.phase_marker || CODEX_REQUEST_MARKER;
+  return `${marker}\n\n${canonicalPrompt(body)}`;
 }
 
 function composeResponseCommand(request, body = '') {
@@ -905,8 +917,20 @@ function parseMarker(input = {}, marker, fallbackTitle) {
 }
 
 function parseCodexRequestMarker(input = {}) {
+  const phase = parsePhaseMarker(input);
+  if (phase && phase.lineage === 'claude') {
+    return {
+      title: sanitizeTitle(phase.body || '', 'Claude phase request'),
+      body: canonicalPrompt(phase.body || ''),
+      source: 'phase-marker',
+      phase: phase.phase,
+      phase_marker: phase.marker,
+      required_executor_agent: phase.required_agent,
+      visible_marker: phase.marker,
+    };
+  }
   const parsed = parseMarker(input, CODEX_REQUEST_MARKER, 'Codex request');
-  return parsed ? { ...parsed, source: 'system-marker' } : null;
+  return parsed ? { ...parsed, source: 'system-marker', visible_marker: CODEX_REQUEST_MARKER } : null;
 }
 
 function parseCodexResponseMarker(input = {}) {
@@ -916,7 +940,9 @@ function parseCodexResponseMarker(input = {}) {
 
 function isExplicitXmuxPrompt(input = {}) {
   const prompt = String(input.prompt || '').trim();
-  return prompt.startsWith(CODEX_REQUEST_MARKER) || prompt.startsWith(CODEX_RESPONSE_MARKER);
+  return prompt.startsWith(CODEX_REQUEST_MARKER)
+    || prompt.startsWith(CODEX_RESPONSE_MARKER)
+    || Boolean(parsePhaseMarker(input));
 }
 
 function visibleMarkerBody(input = {}, marker) {
@@ -946,7 +972,7 @@ function parseClaudeToCodexTrigger(input = {}) {
 }
 
 function buildAdditionalContext(request) {
-  return [
+  const lines = [
     'XMux request from Codex accepted.',
     `Request ID: ${request.request_id}`,
     `Title: ${request.title || request.request_id}`,
@@ -954,11 +980,22 @@ function buildAdditionalContext(request) {
     `Expected role: ${request.expected_role || 'second_opinion'}`,
     '',
     'Rules:',
-    `- Treat the visible ${CODEX_REQUEST_MARKER} prompt body as the only XMux task.`,
+    `- Treat the visible ${request.phase_marker || CODEX_REQUEST_MARKER} prompt body as the only XMux task.`,
     '- Do not expose the nonce or internal request metadata unless the user explicitly asks for debugging.',
     '- Do not call MCP teammate tools, write_to_lead, raw tmux, send-keys, load-buffer, or paste-buffer.',
-    '- Complete the task normally. The XMux Stop hook will deliver your final assistant message back to Codex.',
-  ].join('\n');
+  ];
+  if (request.phase_marker && request.required_executor_agent) {
+    lines.push(
+      '',
+      'XMux phase execution rule:',
+      `- Phase marker ${request.phase_marker} maps to phase ${request.phase || 'unknown'}.`,
+      `- Invoke the Claude subagent ${request.required_executor_agent} for this phase before producing the final answer.`,
+      '- The main Claude conversation must synthesize the subagent result; it must not perform the phase directly.',
+      '- The XMux Stop hook will block completion until the required subagent stop event is recorded.',
+    );
+  }
+  lines.push('- Complete the task normally. The XMux Stop hook will deliver your final assistant message back to Codex.');
+  return lines.join('\n');
 }
 
 function writeHookContext(eventName, additionalContext) {
@@ -989,7 +1026,8 @@ function validateTrigger(opts) {
     throw new Error('raw mode requires --trigger xmux-claude!');
   }
   const consent = String(opts['transport-consent'] || process.env.XMUX_TRANSPORT_CONSENT || '').trim();
-  if (consent !== trigger) {
+  const workflowConsent = trigger === 'xmux-claude' && consent === 'xmux-implement';
+  if (consent !== trigger && !workflowConsent) {
     throw new Error(`xmux claude send requires explicit $${trigger} first-token trigger transport consent`);
   }
   return trigger;
@@ -1088,7 +1126,7 @@ async function acceptXmuxCommand(input, eventName, root = stateRoot()) {
   if (!retrieved.ok) {
     return { status: 'invalid', request_id: request.request_id, reason: retrieved.error || 'request_body_unavailable' };
   }
-  const visibleBody = visibleMarkerBody(input, CODEX_REQUEST_MARKER);
+  const visibleBody = visibleMarkerBody(input, parsed.visible_marker || CODEX_REQUEST_MARKER);
   if (!visibleBody.trim()) {
     return { status: 'invalid', request_id: request.request_id, reason: 'visible_prompt_body_missing' };
   }
@@ -1102,6 +1140,9 @@ async function acceptXmuxCommand(input, eventName, root = stateRoot()) {
     item.accepted_via = CODEX_REQUEST_NAME;
     item.accepted_hook = eventName;
     item.command_source = parsed.source;
+    item.phase = item.phase || parsed.phase || '';
+    item.phase_marker = item.phase_marker || parsed.phase_marker || '';
+    item.required_executor_agent = item.required_executor_agent || parsed.required_executor_agent || '';
     item.prompt_retrieved_at = nowTs();
     item.prompt_body_bytes = retrieved.bytes || byteLength(retrieved.body);
     item.claude_session_id = input.session_id || input.sessionId || item.claude_session_id || '';
@@ -1117,7 +1158,22 @@ async function acceptXmuxCommand(input, eventName, root = stateRoot()) {
     hook: eventName,
     source: parsed.source,
   }, root);
-  return { status: 'accepted', request: accepted, body: retrieved.body };
+  const routeEvent = appendRouteEvent({
+    request_id: request.request_id,
+    from_lineage: 'codex',
+    to_lineage: 'claude',
+    prompt_hash: request.prompt_sha256,
+    marker_valid: true,
+    model_tier: request.model_tier || process.env.XMUX_CLAUDE_MODEL_TIER || 'unknown',
+    transport_event: 'claude.hook.xmux_codex.accepted',
+    phase_marker: request.phase_marker || parsed.phase_marker || '',
+    phase: request.phase || parsed.phase || '',
+  }, root);
+  const acceptedWithRouteEvent = updateRequest(request.request_id, (item) => {
+    item.codex_to_claude_route_event_id = routeEvent.event_id;
+    return item;
+  }, root);
+  return { status: 'accepted', request: acceptedWithRouteEvent, body: retrieved.body };
 }
 
 async function acceptCodexResponseMarker(input, root = stateRoot()) {
@@ -1516,6 +1572,11 @@ async function sendClaudeToCodexPrompt(options = {}, root = stateRoot()) {
   }
 
   const id = requestId();
+  let phaseConfig = null;
+  if (options.phase) {
+    phaseConfig = phaseEntry('codex', options.phase);
+    if (!phaseConfig) return { status: 'invalid', request_id: '', reason: `unknown Codex XMux phase: ${options.phase}` };
+  }
   const targetCodexSession = options.codexSession !== undefined
     ? String(options.codexSession || '')
     : (process.env.XMUX_CODEX_SESSION_NAME || process.env.XMUX_TEAM || '');
@@ -1541,6 +1602,10 @@ async function sendClaudeToCodexPrompt(options = {}, root = stateRoot()) {
     mode: 'synthesis',
     expected_role: 'primary',
     status: 'prepared',
+    model_tier: options.modelTier || process.env.XMUX_CODEX_MODEL_TIER || 'codex',
+    phase: phaseConfig ? phaseConfig.phase : '',
+    phase_marker: phaseConfig ? phaseMarker('codex', phaseConfig.phase) : '',
+    required_executor_agent: phaseConfig ? phaseConfig.required_agent : '',
     prompt_sha256: sha256(body),
     prompt_body_bytes: byteLength(body),
     created_at: nowTs(),
@@ -1560,7 +1625,7 @@ async function sendClaudeToCodexPrompt(options = {}, root = stateRoot()) {
     item.command_source = options.commandSource || 'cli';
     return item;
   }, root);
-  const prompt = `${CLAUDE_REQUEST_MARKER}\n\n${body}`;
+  const prompt = `${request.phase_marker || CLAUDE_REQUEST_MARKER}\n\n${body}`;
   const result = await sendRequestToSession({
     root,
     name: pairCheck.sessionName,
@@ -1837,6 +1902,11 @@ async function cmdSend(opts) {
 
   const id = requestId();
   const hash = sha256(body);
+  let phaseConfig = null;
+  if (opts.phase) {
+    phaseConfig = phaseEntry('claude', opts.phase);
+    if (!phaseConfig) throw new Error(`unknown Claude XMux phase: ${opts.phase}`);
+  }
   const title = opts.title
     ? sanitizeTitle(opts.title, id)
     : titleFromText(body, id);
@@ -1853,6 +1923,10 @@ async function cmdSend(opts) {
     mode: trigger === 'xmux-claude!' ? 'raw' : (opts.mode || 'synthesis'),
     expected_role: opts['expected-role'] || 'second_opinion',
     status: 'prepared',
+    model_tier: opts['model-tier'] || process.env.XMUX_CLAUDE_MODEL_TIER || 'unknown',
+    phase: phaseConfig ? phaseConfig.phase : '',
+    phase_marker: phaseConfig ? phaseMarker('claude', phaseConfig.phase) : '',
+    required_executor_agent: phaseConfig ? phaseConfig.required_agent : '',
     prompt_sha256: hash,
     prompt_body_bytes: byteLength(body),
     codex_session: codexSession,
@@ -1995,6 +2069,8 @@ async function cmdSendCodex(opts) {
     codexSession: opts.to || codexPaneContext.sessionName || process.env.XMUX_CODEX_SESSION_NAME || process.env.XMUX_TEAM || '',
     eventName: 'cli',
     commandSource: 'xmux-cli',
+    modelTier: opts['model-tier'],
+    phase: opts.phase || '',
   }, root);
   const request = result.request || (result.request_id ? readJson(requestPath(result.request_id, root), null) : null);
   const payload = {
@@ -2260,6 +2336,70 @@ function hookSessionForRequest(input, request, root = stateRoot()) {
   return session;
 }
 
+function activePhaseRequest(input, root = stateRoot()) {
+  const session = hookSession(input, root);
+  if (!session || !session.active_request) return { session, request: null };
+  const request = readJson(requestPath(session.active_request, root), null);
+  if (!request || request.status !== 'accepted') return { session, request: null };
+  if (!request.required_executor_agent) return { session, request: null };
+  return { session, request };
+}
+
+function agentNameFromHookInput(input = {}) {
+  const toolInput = input.tool_input || input.toolInput || {};
+  return String(
+    input.agent_type
+    || input.agentType
+    || input.subagent_type
+    || input.subagentType
+    || input.agent_name
+    || input.agentName
+    || toolInput.agent_type
+    || toolInput.agentType
+    || toolInput.subagent_type
+    || toolInput.subagentType
+    || toolInput.agent
+    || toolInput.name
+    || ''
+  ).trim();
+}
+
+function claudeAgentFileCandidates(agentName, input = {}) {
+  const project = hookProjectRoot(input);
+  return [
+    path.join(project, '.claude', 'agents', `${agentName}.md`),
+    path.join(os.homedir(), '.claude', 'agents', `${agentName}.md`),
+  ];
+}
+
+function readClaudeAgentDefinition(agentName, input = {}) {
+  for (const candidate of claudeAgentFileCandidates(agentName, input)) {
+    try {
+      if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) continue;
+      const content = fs.readFileSync(candidate, 'utf8');
+      const model = (content.match(/^model:\s*([^\n#]+)/m) || [])[1] || '';
+      return {
+        path: candidate,
+        hash: sha256(content),
+        model: model.trim(),
+      };
+    } catch (_) {
+      continue;
+    }
+  }
+  return { path: '', hash: '', model: '' };
+}
+
+function requestExecutorEvent(root, request) {
+  if (!request || !request.executor_event_ref) return null;
+  const event = findExecutorEvent(root, request.executor_event_ref);
+  if (!event) return null;
+  if (event.request_id !== request.request_id) return null;
+  if (event.agent_name !== request.required_executor_agent) return null;
+  if (request.phase_marker && event.phase_marker !== request.phase_marker) return null;
+  return event;
+}
+
 function extractAssistantTextFromEntry(entry) {
   if (!entry || typeof entry !== 'object') return '';
   if (typeof entry.last_assistant_message === 'string') return entry.last_assistant_message;
@@ -2421,6 +2561,75 @@ async function cmdHookUserPromptExpansion() {
   return 0;
 }
 
+function cmdHookPreToolUse() {
+  const input = readHookInput();
+  const root = hookStateRoot(input, { requireExisting: true });
+  if (!root) return 0;
+  const { request } = activePhaseRequest(input, root);
+  if (!request) return 0;
+  const toolName = String(input.tool_name || input.toolName || '').trim();
+  if (!/^(Agent|Task)$/i.test(toolName)) return 0;
+  const agentName = agentNameFromHookInput(input);
+  if (agentName !== request.required_executor_agent) {
+    appendEvent('claude.hook.phase_executor.blocked', {
+      request_id: request.request_id,
+      phase: request.phase || '',
+      phase_marker: request.phase_marker || '',
+      required_agent: request.required_executor_agent || '',
+      attempted_agent: agentName,
+      tool: toolName,
+    }, root);
+    writeHookBlock('PreToolUse', `XMux phase ${request.phase || request.phase_marker} requires subagent ${request.required_executor_agent}; attempted ${agentName || '(unknown)'}.`);
+  }
+  return 0;
+}
+
+function cmdHookSubagentStop() {
+  const input = readHookInput();
+  const root = hookStateRoot(input, { requireExisting: true });
+  if (!root) return 0;
+  const { request } = activePhaseRequest(input, root);
+  if (!request) return 0;
+  const agentName = agentNameFromHookInput(input);
+  if (agentName !== request.required_executor_agent) {
+    appendEvent('claude.hook.subagent_stop.ignored', {
+      request_id: request.request_id,
+      phase: request.phase || '',
+      required_agent: request.required_executor_agent || '',
+      agent_name: agentName,
+    }, root);
+    return 0;
+  }
+  const definition = readClaudeAgentDefinition(agentName, input);
+  const executorEvent = appendExecutorEvent({
+    request_id: request.request_id,
+    lineage: 'claude',
+    event: 'stop',
+    phase_marker: request.phase_marker || '',
+    phase: request.phase || '',
+    agent_name: agentName,
+    agent_model: definition.model || input.model || input.model_name || 'unknown',
+    agent_definition_hash: definition.hash,
+    transcript_path: input.transcript_path || input.transcriptPath || '',
+    hook_event: 'SubagentStop',
+  }, root);
+  updateRequest(request.request_id, (item) => {
+    item.executor_event_ref = executorEvent.event_id;
+    item.executor_agent = agentName;
+    item.executor_agent_definition_hash = definition.hash;
+    item.executor_agent_model = definition.model || input.model || input.model_name || '';
+    return item;
+  }, root);
+  appendEvent('claude.hook.subagent_stop.recorded', {
+    request_id: request.request_id,
+    phase: request.phase || '',
+    phase_marker: request.phase_marker || '',
+    agent_name: agentName,
+    executor_event_id: executorEvent.event_id,
+  }, root);
+  return 0;
+}
+
 async function cmdHookStop() {
   const input = readHookInput();
   const root = hookStateRoot(input, { requireExisting: true });
@@ -2436,6 +2645,17 @@ async function cmdHookStop() {
       status: request.status || '',
       accepted_via: request.accepted_via || '',
     }, root);
+    return 0;
+  }
+  if (request.required_executor_agent && !requestExecutorEvent(root, request)) {
+    appendEvent('claude.hook.stop.blocked', {
+      request_id: request.request_id,
+      phase: request.phase || '',
+      phase_marker: request.phase_marker || '',
+      required_agent: request.required_executor_agent || '',
+      reason: 'executor_event_missing',
+    }, root);
+    writeHookBlock('Stop', `XMux phase ${request.phase || request.phase_marker} requires subagent ${request.required_executor_agent}. Invoke that subagent and synthesize its result before stopping.`);
     return 0;
   }
   const text = input.last_assistant_message
@@ -2455,14 +2675,14 @@ function usage() {
   xmux claude sessions [--json]
   xmux claude start [--name <name>] [--split]
   xmux claude ensure-hooks [--json]
-  xmux claude send --trigger xmux-claude|xmux-claude! --transport-consent <trigger> [--to <name>] [--title <text>] [--prompt <text>|--stdin] [--wait] [--json]
-  xmux claude send-codex --trigger xmux-codex [--from <name>] [--to <codex-session>] [--title <text>] [--prompt <text>|--stdin] [--json]
+  xmux claude send --trigger xmux-claude|xmux-claude! --transport-consent <trigger> [--to <name>] [--title <text>] [--phase <phase>] [--model-tier <tier>] [--prompt <text>|--stdin] [--wait] [--json]
+  xmux claude send-codex --trigger xmux-codex [--from <name>] [--to <codex-session>] [--title <text>] [--phase <phase>] [--model-tier <tier>] [--prompt <text>|--stdin] [--json]
   xmux claude trigger-codex [--to <name>] [--prompt <text>|--stdin] [--json]
   xmux claude read <request_id> [--json]
   xmux claude status [--to <name>]
   xmux claude stop --name <name>
   xmux claude pane-run --name <name>
-  xmux claude hook session-start|user-prompt|user-prompt-expansion|stop`);
+  xmux claude hook session-start|user-prompt|user-prompt-expansion|pre-tool-use|subagent-stop|stop`);
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -2497,8 +2717,10 @@ async function main(argv = process.argv.slice(2)) {
         if (opts._[0] === 'session-start') return cmdHookSessionStart();
         if (opts._[0] === 'user-prompt') return await cmdHookUserPrompt();
         if (opts._[0] === 'user-prompt-expansion') return await cmdHookUserPromptExpansion();
+        if (opts._[0] === 'pre-tool-use') return cmdHookPreToolUse();
+        if (opts._[0] === 'subagent-stop') return cmdHookSubagentStop();
         if (opts._[0] === 'stop') return cmdHookStop();
-        throw new Error('hook requires session-start, user-prompt, user-prompt-expansion, or stop');
+        throw new Error('hook requires session-start, user-prompt, user-prompt-expansion, pre-tool-use, subagent-stop, or stop');
       case '-h':
       case '--help':
       case 'help':

@@ -27,8 +27,8 @@ subpaths from that root instead of assuming checkout-relative files.
 
 Distribution boundaries:
 
-- Homebrew installs `bin/`, `runtime/`, `assets/`, `src/xmux/setup.js`,
-  `src/codex/setup.js`, `src/claude/setup.js`, and the Claude/Codex harness
+- Homebrew installs `bin/`, `runtime/`, `assets/`, the `src/xmux`,
+  `src/codex`, and `src/claude` runtime modules, and the Claude/Codex harness
   shims.
 - npm/npx publishes the JavaScript runtime surface used by setup helpers and
   the `xmux-claude-harness` and `xmux-codex-harness` bins.

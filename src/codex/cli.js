@@ -13,6 +13,8 @@ const {
   writeLegacySessionMirror,
   writeUnifiedSession,
 } = require('../xmux/session-state');
+const { appendRouteEvent } = require('../xmux/workflow-state');
+const { parsePhaseMarker } = require('../xmux/phase-registry');
 
 const SCHEMA_SESSION = 'xmux.codex.session.v1';
 const DEFAULT_SESSION = 'default';
@@ -695,6 +697,17 @@ function parseResponseMarker(input = {}) {
 }
 
 function parseRequestMarker(input = {}) {
+  const phase = parsePhaseMarker(input);
+  if (phase && phase.lineage === 'codex') {
+    return {
+      title: titleFromText(phase.body, 'Codex phase request'),
+      body: phase.body,
+      phase: phase.phase,
+      phase_marker: phase.marker,
+      required_executor_agent: phase.required_agent,
+      visible_marker: phase.marker,
+    };
+  }
   return parseMarker(input, CLAUDE_REQUEST_MARKER, 'Claude request');
 }
 
@@ -707,7 +720,9 @@ function visibleMarkerBody(input = {}, marker) {
 
 function isExplicitXmuxMarker(input = {}) {
   const prompt = String(input.prompt || '').trim();
-  return prompt.startsWith(CLAUDE_RESPONSE_MARKER) || prompt.startsWith(CLAUDE_REQUEST_MARKER);
+  return prompt.startsWith(CLAUDE_RESPONSE_MARKER)
+    || prompt.startsWith(CLAUDE_REQUEST_MARKER)
+    || Boolean(parsePhaseMarker(input));
 }
 
 function updateClaudeRequest(id, updater, root = stateRoot()) {
@@ -845,7 +860,7 @@ function responsePendingMatches(session, parsed, root = stateRoot()) {
 function requestPendingMatches(session, input, parsed, root = stateRoot()) {
   const pending = session && session.pending_request;
   if (!pending || !pending.request_id) return false;
-  const visibleBody = visibleMarkerBody(input, CLAUDE_REQUEST_MARKER);
+  const visibleBody = visibleMarkerBody(input, parsed.visible_marker || CLAUDE_REQUEST_MARKER);
   if (visibleBody.trim() && pending.prompt_sha256 && pending.prompt_sha256 === sha256(visibleBody)) return true;
   if (pending.title && parsed.title && pending.title === parsed.title) return true;
   const request = readJson(claudeRequestPath(pending.request_id, root), null);
@@ -1038,6 +1053,9 @@ async function acceptClaudeRequestMarker(input, root = stateRoot()) {
     item.codex_request_accepted_at = nowTs();
     item.codex_request_marker_title = parsed.title;
     item.codex_request_accepted_by = codexSession || defaultSessionName();
+    item.phase = item.phase || parsed.phase || '';
+    item.phase_marker = item.phase_marker || parsed.phase_marker || '';
+    item.required_executor_agent = item.required_executor_agent || parsed.required_executor_agent || '';
     item.prompt_body_bytes = retrieved.bytes || byteLength(retrieved.body);
     return item;
   }, root);
@@ -1051,7 +1069,22 @@ async function acceptClaudeRequestMarker(input, root = stateRoot()) {
     session: codexSession || defaultSessionName(),
     title: parsed.title,
   }, root);
-  return { status: 'accepted', request: accepted, body: retrieved.body };
+  const routeEvent = appendRouteEvent({
+    request_id: request.request_id,
+    from_lineage: 'claude',
+    to_lineage: 'codex',
+    prompt_hash: request.prompt_sha256,
+    marker_valid: true,
+    model_tier: request.model_tier || process.env.XMUX_CODEX_MODEL_TIER || 'codex',
+    transport_event: 'codex.hook.claude_request.accepted',
+    phase_marker: request.phase_marker || parsed.phase_marker || '',
+    phase: request.phase || parsed.phase || '',
+  }, root);
+  const acceptedWithRouteEvent = updateClaudeRequest(request.request_id, (item) => {
+    item.claude_to_codex_route_event_id = routeEvent.event_id;
+    return item;
+  }, root);
+  return { status: 'accepted', request: acceptedWithRouteEvent, body: retrieved.body };
 }
 
 function hookCommandGlobal(subcommand) {

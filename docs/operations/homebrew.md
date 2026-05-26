@@ -26,11 +26,15 @@ $(brew --prefix)/opt/xmux/libexec/
     shell/xmux.zsh
     tmux/tmux.conf
   assets/
+    claude/agents/
     codex/skills/xmux-claude/
+    codex/skills/xmux-implement/
     codex/skills/xmux-send/
     claude/skills/xmux-codex/SKILL.md
   src/
     xmux/setup.js
+    xmux/workflow-cli.js
+    xmux/workflow-state.js
     codex/setup.js
     claude/setup.js
   dist/

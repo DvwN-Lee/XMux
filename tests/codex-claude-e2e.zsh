@@ -2,6 +2,10 @@
 set -euo pipefail
 
 repo_root="${0:A:h:h}"
+if [[ -x /opt/homebrew/bin/tmux ]]; then
+  path=(/opt/homebrew/bin $path)
+  export PATH
+fi
 temp_root="$(mktemp -d "${TMPDIR:-/tmp}/xmux-e2e.XXXXXXXXXX")"
 temp_root="${temp_root:A}"
 project_dir="$temp_root/xmux-e2e-project"
@@ -45,7 +49,7 @@ print_debug() {
 }
 
 mkdir -p "$project_dir" "$home_dir" "$bin_dir"
-git -C "$project_dir" init -q
+mkdir -p "$project_dir/.git"
 
 cat > "$bin_dir/fake-codex.py" <<'PY'
 #!/usr/bin/env python3
@@ -96,6 +100,13 @@ def run_xmux(args, payload=None, timeout=20):
     return result
 
 
+def has_block_decision(result):
+    try:
+        return json.loads(result.stdout).get("decision") == "block"
+    except Exception:
+        return False
+
+
 def normalize(text):
     return (
         text.replace("\x1b[200~", "")
@@ -110,14 +121,14 @@ def extract_prompt(buffer, marker):
     if start < 0:
         return "", buffer
     tail = buffer[start:]
-    marker_names = ["[xmux-claude-response]", "[xmux-claude-request]", "[xmux-codex-request]", "[xmux-codex-response]"]
+    marker_names = ["[xmux-claude-response]", "[xmux-claude-request]", "[xmux-claude-review]", "[xmux-codex-request]", "[xmux-codex-response]"]
     ends = [tail.find(item, len(marker)) for item in marker_names if tail.find(item, len(marker)) > 0]
     end = min(ends) if ends else len(tail)
     return tail[:end].strip(), tail[end:]
 
 
 version = run_xmux(["--version"], timeout=10)
-if version.returncode != 0 or "xmux 1.0.1" not in version.stdout:
+if version.returncode != 0 or "xmux 1.0.2" not in version.stdout:
     sys.exit(10)
 
 claude_cmd = " ".join(shlex.quote(item) for item in [FAKE_CLAUDE, XMUX, DONE, FINAL_DONE, ACCEPTED, CLAUDE_REPLY, CODEX_REPLY])
@@ -144,8 +155,10 @@ send = run_xmux(
         "xmux-claude",
         "--title",
         "E2E Codex to Claude",
+        "--phase",
+        "review",
         "--prompt",
-        "CLAUDE_E2E_REQUEST: reply with HOOK-PONG-1.0.1",
+        "CLAUDE_E2E_REQUEST: reply with HOOK-PONG-1.0.2",
         "--wait",
         "--timeout",
         "30",
@@ -241,6 +254,13 @@ def run_xmux(args, payload=None, timeout=20):
     return result
 
 
+def has_block_decision(result):
+    try:
+        return json.loads(result.stdout).get("decision") == "block"
+    except Exception:
+        return False
+
+
 def normalize(text):
     return (
         text.replace("\x1b[200~", "")
@@ -255,7 +275,7 @@ def extract_prompt(buffer, marker):
     if start < 0:
         return "", buffer
     tail = buffer[start:]
-    marker_names = ["[xmux-codex-request]", "[xmux-codex-response]", "[xmux-claude-request]", "[xmux-claude-response]"]
+    marker_names = ["[xmux-claude-review]", "[xmux-codex-request]", "[xmux-codex-response]", "[xmux-claude-request]", "[xmux-claude-response]"]
     ends = [tail.find(item, len(marker)) for item in marker_names if tail.find(item, len(marker)) > 0]
     end = min(ends) if ends else len(tail)
     return tail[:end].strip(), tail[end:]
@@ -285,11 +305,35 @@ while time.time() < deadline:
         chunk = os.read(sys.stdin.fileno(), 8192).decode("utf-8", errors="replace")
         buffer = normalize(buffer + chunk)
 
-    if not answered_codex_request and "[xmux-codex-request]" in buffer and "CLAUDE_E2E_REQUEST" in buffer:
-        prompt, buffer = extract_prompt(buffer, "[xmux-codex-request]")
+    if not answered_codex_request and "[xmux-claude-review]" in buffer and "CLAUDE_E2E_REQUEST" in buffer:
+        prompt, buffer = extract_prompt(buffer, "[xmux-claude-review]")
         accepted = run_xmux(["claude", "hook", "user-prompt"], {"prompt": prompt, "cwd": PROJECT})
         if accepted.returncode != 0:
             sys.exit(21)
+        direct_stop = run_xmux(["claude", "hook", "stop"], {"last_assistant_message": "direct main response should be blocked", "cwd": PROJECT})
+        if direct_stop.returncode != 0 or not has_block_decision(direct_stop):
+            sys.exit(26)
+        wrong_agent = run_xmux(["claude", "hook", "pre-tool-use"], {
+            "tool_name": "Agent",
+            "tool_input": {"agent_type": "not-xmux-review"},
+            "cwd": PROJECT,
+        })
+        if wrong_agent.returncode != 0 or not has_block_decision(wrong_agent):
+            sys.exit(27)
+        right_agent = run_xmux(["claude", "hook", "pre-tool-use"], {
+            "tool_name": "Agent",
+            "tool_input": {"agent_type": "xmux-review"},
+            "cwd": PROJECT,
+        })
+        if right_agent.returncode != 0 or has_block_decision(right_agent):
+            sys.exit(28)
+        subagent = run_xmux(["claude", "hook", "subagent-stop"], {
+            "agent_type": "xmux-review",
+            "transcript_path": "",
+            "cwd": PROJECT,
+        })
+        if subagent.returncode != 0:
+            sys.exit(29)
         stopped = run_xmux(["claude", "hook", "stop"], {"last_assistant_message": CLAUDE_REPLY, "cwd": PROJECT})
         if stopped.returncode != 0:
             sys.exit(22)
@@ -310,7 +354,7 @@ while time.time() < deadline:
                 "--title",
                 "E2E Claude to Codex",
                 "--prompt",
-                "CODEX_E2E_REQUEST: reply with CODEX-PONG-1.0.1",
+                "CODEX_E2E_REQUEST: reply with CODEX-PONG-1.0.2",
                 "--json",
             ],
             timeout=30,
@@ -342,8 +386,8 @@ version_output="$(
   XMUX_PROJECT_DIR="$project_dir" \
   "$repo_root/bin/xmux" --version
 )"
-[[ "$version_output" == "xmux 1.0.1" ]] || {
-  print -u2 "expected xmux 1.0.1, got: $version_output"
+[[ "$version_output" == "xmux 1.0.2" ]] || {
+  print -u2 "expected xmux 1.0.2, got: $version_output"
   exit 1
 }
 
@@ -359,8 +403,8 @@ version_output="$(
     "$final_done" \
     "$codex_accepted" \
     "$bin_dir/fake-claude.py" \
-    "HOOK-PONG-1.0.1" \
-    "CODEX-PONG-1.0.1"
+    "HOOK-PONG-1.0.2" \
+    "CODEX-PONG-1.0.2"
 )
 session_started=1
 
@@ -372,11 +416,11 @@ for _ in {1..80}; do
       break
     fi
   done < <(tmux list-sessions -F '#{session_name}	#{@xmux-project-dir}	#{@xmux-version}' 2>/dev/null || true)
-  [[ "$session_version" == "1.0.1" ]] && break
+  [[ "$session_version" == "1.0.2" ]] && break
   sleep 0.25
 done
-[[ "$session_version" == "1.0.1" ]] || {
-  print -u2 "expected tmux @xmux-version 1.0.1, got: ${session_version:-missing}"
+[[ "$session_version" == "1.0.2" ]] || {
+  print -u2 "expected tmux @xmux-version 1.0.2, got: ${session_version:-missing}"
   print_debug
   exit 1
 }
@@ -410,6 +454,10 @@ assert.ok(codexToClaude, "codex_to_claude request should exist");
 assert.equal(codexToClaude.status, "responded");
 assert.equal(codexToClaude.codex_delivery, "sent");
 assert.ok(codexToClaude.codex_response_accepted_at, "Codex should accept Claude response");
+assert.equal(codexToClaude.phase, "review");
+assert.equal(codexToClaude.phase_marker, "[xmux-claude-review]");
+assert.equal(codexToClaude.required_executor_agent, "xmux-review");
+assert.ok(codexToClaude.executor_event_ref, "phase request should record executor event ref");
 
 assert.ok(claudeToCodex, "claude_to_codex request should exist");
 assert.equal(claudeToCodex.status, "closed");
@@ -419,9 +467,54 @@ assert.ok(claudeToCodex.claude_response_accepted_at, "Claude should accept Codex
 
 const claudeEvents = fs.readFileSync(path.join(root, "claude", "events.jsonl"), "utf8");
 const codexEvents = fs.readFileSync(path.join(root, "codex", "events.jsonl"), "utf8");
+const routeEventsPath = path.join(root, "workflows", "route-events.jsonl");
+assert.ok(fs.existsSync(routeEventsPath), "route event log should exist");
+const routeEvents = fs.readFileSync(routeEventsPath, "utf8")
+  .trim()
+  .split("\n")
+  .filter(Boolean)
+  .map((line) => JSON.parse(line));
+const codexToClaudeRoute = routeEvents.find((item) => (
+  item.event_id === codexToClaude.codex_to_claude_route_event_id
+  && item.request_id === codexToClaude.request_id
+  && item.from_lineage === "codex"
+  && item.to_lineage === "claude"
+  && item.marker_valid === true
+));
+const claudeToCodexRoute = routeEvents.find((item) => (
+  item.event_id === claudeToCodex.claude_to_codex_route_event_id
+  && item.request_id === claudeToCodex.request_id
+  && item.from_lineage === "claude"
+  && item.to_lineage === "codex"
+  && item.marker_valid === true
+));
+assert.ok(codexToClaudeRoute, "Codex-to-Claude accepted marker should produce a route event");
+assert.ok(claudeToCodexRoute, "Claude-to-Codex accepted marker should produce a route event");
+assert.equal(codexToClaudeRoute.prompt_hash, codexToClaude.prompt_sha256);
+assert.equal(claudeToCodexRoute.prompt_hash, claudeToCodex.prompt_sha256);
+assert.equal(codexToClaudeRoute.phase_marker, "[xmux-claude-review]");
+assert.equal(codexToClaudeRoute.phase, "review");
+const executorEventsPath = path.join(root, "workflows", "executor-events.jsonl");
+assert.ok(fs.existsSync(executorEventsPath), "executor event log should exist");
+const executorEvents = fs.readFileSync(executorEventsPath, "utf8")
+  .trim()
+  .split("\n")
+  .filter(Boolean)
+  .map((line) => JSON.parse(line));
+const reviewExecutor = executorEvents.find((item) => (
+  item.event_id === codexToClaude.executor_event_ref
+  && item.request_id === codexToClaude.request_id
+  && item.agent_name === "xmux-review"
+  && item.phase_marker === "[xmux-claude-review]"
+  && item.event === "stop"
+));
+assert.ok(reviewExecutor, "review phase should have a verified xmux-review subagent stop event");
 for (const event of [
   "claude.request.prepared",
   "claude.hook.xmux_codex.accepted",
+  "claude.hook.phase_executor.blocked",
+  "claude.hook.subagent_stop.recorded",
+  "claude.hook.stop.blocked",
   "claude.response.codex_delivered",
   "claude.codex_request.delivered",
   "claude.hook.codex_response.accepted",

@@ -30,7 +30,7 @@ const CODEX_HOOK_TAG_VALUE = 'xmux-codex-harness';
 const LEGACY_CODEX_AGENT_MARKER = '# XMUX_MANAGED_AGENT';
 const LEGACY_CODEX_AGENT_MANIFEST = '.xmux-agents.json';
 const LEGACY_CODEX_AGENT_NAMES = ['xmux_claude.toml', 'xmux_copilot.toml', 'xmux_gemini.toml'];
-const CURRENT_CODEX_SKILLS = new Set(['xmux-claude', 'xmux-send']);
+const CURRENT_CODEX_SKILLS = new Set(['xmux-claude', 'xmux-implement', 'xmux-send']);
 
 function expandUser(value) {
   const text = String(value || '');

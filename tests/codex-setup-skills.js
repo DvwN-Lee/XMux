@@ -23,6 +23,7 @@ function makeSkill(name) {
 }
 
 makeSkill("xmux-claude");
+makeSkill("xmux-implement");
 makeSkill("xmux-send");
 makeSkill("xmux-extra");
 
@@ -92,6 +93,7 @@ function runDoctor(extraArgs = []) {
 
 const first = runSetup();
 assert.equal(first.stdout.includes("skills: xmux-claude"), true, "first install should report installed skills");
+assert.equal(first.stdout.includes("xmux-implement"), true, "first install should include xmux-implement");
 const rulesFile = path.join(codexHome, "rules", "default.rules");
 const rulesContent = fs.readFileSync(rulesFile, "utf8");
 assert.equal(
@@ -112,10 +114,10 @@ assert.equal(configContent.includes(`[permissions.xmux-workspace.network.unix_so
 const skillsRoot = path.join(fakeHome, ".agents", "skills");
 assert.deepEqual(
   fs.readdirSync(skillsRoot).sort(),
-  ["xmux-claude", "xmux-send"],
+  ["xmux-claude", "xmux-implement", "xmux-send"],
   "only allowlisted XMux skills should be installed",
 );
-for (const name of ["xmux-claude", "xmux-send"]) {
+for (const name of ["xmux-claude", "xmux-implement", "xmux-send"]) {
   const skillDir = path.join(skillsRoot, name);
   assert.equal(fs.existsSync(path.join(skillDir, "SKILL.md")), true, `${name} should have SKILL.md`);
   assert.equal(
@@ -137,9 +139,9 @@ assert.equal(
 
 const refreshed = runSetup(["--refresh"]);
 assert.equal(
-  refreshed.stdout.includes("skills: xmux-claude, xmux-send"),
+  refreshed.stdout.includes("skills: xmux-claude, xmux-implement, xmux-send"),
   true,
-  "refresh should reinstall both public XMux skills",
+  "refresh should reinstall public XMux skills",
 );
 assert.equal(
   runDoctor().stdout.includes("stale XMux Codex skills"),

@@ -10,6 +10,7 @@ commands=(
   "stop:stop an XMux-owned tmux session"
   "sessions:list XMux tmux sessions"
   "send-pane:send text to an XMux Codex session"
+  "workflow:operate evidence-gated workflow state"
   "setup-xmux:configure global Codex and Claude integration"
   "cleanup-legacy:remove legacy XMux state after review"
   "doctor-xmux:inspect XMux integration"
@@ -135,7 +136,9 @@ case "${words[2]:-}" in
         "--to[session name]:session:" \
         "--name[session name]:session:" \
         "--trigger[required explicit trigger]:trigger:(xmux-claude xmux-claude\\! xmux-codex)" \
-        "--transport-consent[first-token XMux trigger consent]:trigger:(xmux-claude xmux-claude\\!)" \
+        "--transport-consent[first-token XMux trigger consent]:trigger:(xmux-claude xmux-claude\\! xmux-implement)" \
+        "--phase[XMux phase marker]:phase:(review review-recheck plan-critique verification-contract final-signoff stuck implement-core verify fixup finalize)" \
+        "--model-tier[model tier for route-event provenance]:tier:(unknown haiku sonnet opus codex gpt-5.3-codex gpt-5.5)" \
         "--prompt[prompt text]:text:" \
         "--stdin[read prompt from stdin]" \
         "--wait[wait for response]" \
@@ -144,6 +147,46 @@ case "${words[2]:-}" in
         "--split[record split-view preference]" \
         "--socket-timeout[socket timeout milliseconds]:milliseconds:" \
         "--claude-cmd[Claude TUI command for pane-run]:command:"
+    fi
+    ;;
+  workflow)
+    if (( CURRENT == 3 )); then
+      _arguments -C \
+        $common_options \
+        "1:workflow command:(start classify evidence phase finding contract gate show)"
+    else
+      _arguments -C \
+        $common_options \
+        "--run-id[workflow run id]:run id:" \
+        "--task-ref[task reference]:text:" \
+        "--done-criteria[done criterion]:text:" \
+        "--changed-files[changed file count]:count:" \
+        "--changed-lines[changed line count]:count:" \
+        "--trigger[risk trigger]:trigger:(public_behavior_change domain_business_logic unclear_test_coverage cross_module new_dependency new_abstraction auth_security_pii schema_migration)" \
+        "--raise-risk[raise risk class]:risk:(medium high)" \
+        "--cmd[verification command]:command:" \
+        "--exit-code[verification exit code]:code:" \
+        "--summary[summary text]:text:" \
+        "--output-tail[verification output tail]:text:" \
+        "--output-tail-file[verification output tail file]:file:_files" \
+        "--stdin-output-tail[read output tail from stdin]" \
+        "--phase[phase name]:phase:(intake classify-risk scope plan verification-contract implement-core verify review fixup review-recheck final-signoff finalize stuck)" \
+        "--owner[phase owner]:owner:(codex claude)" \
+        "--status[phase or finding status]:status:" \
+        "--request-id[XMux request id]:request id:" \
+        "--route-event-ref[route event id]:route event:" \
+        "--prompt-hash[prompt hash]:sha256:" \
+        "--evidence-sufficiency[evidence sufficiency]:value:(sufficient insufficient)" \
+        "--id[finding id]:id:" \
+        "--severity[finding severity]:severity:(low medium high critical)" \
+        "--type[finding type]:type:" \
+        "--file[finding file]:file:_files" \
+        "--line[finding line]:line:" \
+        "--rationale[finding rationale]:text:" \
+        "--required-fix[required fix]:text:" \
+        "--approval-required[contract approval required]" \
+        "--approved-by[contract approver]:owner:(claude)" \
+        "--json[write JSON output]"
     fi
     ;;
   codex|xmux-codex)
