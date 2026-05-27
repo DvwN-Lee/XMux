@@ -4,6 +4,10 @@ Back to [README](../README.md)
 
 XMux docs are grouped by operating area.
 
+## Product
+
+- [Product rationale and PRD](product/prd.md)
+
 ## Runtime
 
 - [Repository layout](runtime/repository-layout.md)
