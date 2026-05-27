@@ -258,20 +258,7 @@ function hasXmuxRuntime(installDir) {
 }
 
 function stableHomebrewXmuxInstallDir(xmuxInstallDir) {
-  const installDir = abs(xmuxInstallDir);
-  const parts = installDir.split(path.sep);
-  const cellarIndex = parts.lastIndexOf("Cellar");
-  const formula = cellarIndex >= 0 ? parts[cellarIndex + 1] : "";
-  if (
-    !XMUX_HOMEBREW_FORMULAS.includes(formula)
-    || !installDir.endsWith(`${path.sep}libexec`)
-    || !hasXmuxRuntime(installDir)
-  ) {
-    return installDir;
-  }
-  const prefix = parts.slice(0, cellarIndex).join(path.sep) || path.sep;
-  const candidate = path.join(prefix, "opt", formula, "libexec");
-  return hasXmuxRuntime(candidate) ? candidate : installDir;
+  return abs(xmuxInstallDir);
 }
 
 function homebrewXmuxInstallCandidates() {
@@ -328,6 +315,15 @@ function isHomebrewXmuxLibexecBinPath(candidatePath) {
     return true;
   }
 
+  if (
+    rest.length === 4
+    && rest[0] === "Cellar"
+    && XMUX_HOMEBREW_FORMULAS.includes(rest[1])
+    && rest[3] === "bin"
+  ) {
+    return true;
+  }
+
   return rest.length === 5
     && rest[0] === "Cellar"
     && XMUX_HOMEBREW_FORMULAS.includes(rest[1])
@@ -361,7 +357,7 @@ function homebrewWrapperBinForInstallDir(xmuxInstallDir) {
     && XMUX_HOMEBREW_FORMULAS.includes(rest[1])
     && rest[3] === "libexec"
   ) {
-    return path.join(prefix, "bin");
+    return path.join(prefix, "Cellar", rest[1], rest[2], "bin");
   }
   return "";
 }

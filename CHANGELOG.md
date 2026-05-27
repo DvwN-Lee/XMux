@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.4 - 2026-05-27
+
+- Changed Homebrew-installed XMux wrappers and setup output to preserve the
+  concrete Cellar keg path used by `brew test` instead of normalizing back to
+  the `opt` symlink.
+- Kept stale XMux `opt` and Cellar command paths pruned from regenerated Codex
+  PATH values while retaining the active Cellar wrapper path.
+
 ## 1.0.3 - 2026-05-27
 
 - Fixed Homebrew Codex PATH setup so `xmux setup-xmux --refresh` keeps

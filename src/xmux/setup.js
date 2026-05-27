@@ -57,18 +57,7 @@ function hasXmuxRuntime(root) {
 }
 
 function stableHomebrewInstallRoot(value) {
-  const root = abs(value);
-  const parts = root.split(path.sep);
-  const cellarIndex = parts.lastIndexOf('Cellar');
-  const formula = cellarIndex >= 0 ? parts[cellarIndex + 1] : '';
-  if (
-    !['xmux', 'xmux-beta'].includes(formula)
-    || !root.endsWith(`${path.sep}libexec`)
-    || !hasXmuxRuntime(root)
-  ) return root;
-  const prefix = parts.slice(0, cellarIndex).join(path.sep) || path.sep;
-  const candidate = path.join(prefix, 'opt', formula, 'libexec');
-  return hasXmuxRuntime(candidate) ? candidate : root;
+  return abs(value);
 }
 
 function homebrewInstallCandidates() {

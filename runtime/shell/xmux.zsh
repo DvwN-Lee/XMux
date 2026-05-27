@@ -35,7 +35,7 @@ else
   XMUX_STATE_DIR_EXPLICIT=0
 fi
 
-XMUX_VERSION="1.0.3"
+XMUX_VERSION="1.0.4"
 
 _xmux_project_root() {
   local dir="${1:-$PWD}"
