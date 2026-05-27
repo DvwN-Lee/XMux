@@ -16,13 +16,17 @@ const codexHome = path.join(fakeHome, ".codex");
 const sourceRoot = path.join(tempRoot, "skills-source");
 const tmuxSocket = "/private/tmp/tmux-501/default";
 
-function makeSkill(name) {
+function makeSkill(name, body = `# ${name}\n`) {
   const skillDir = path.join(sourceRoot, name);
   fs.mkdirSync(skillDir, { recursive: true });
-  fs.writeFileSync(path.join(skillDir, "SKILL.md"), `# ${name}\n`, "utf8");
+  fs.writeFileSync(path.join(skillDir, "SKILL.md"), body, "utf8");
 }
 
-makeSkill("xmux-claude");
+makeSkill("xmux-claude", [
+  "# xmux-claude",
+  "xmux claude send --trigger xmux-claude --transport-consent xmux-claude",
+  "",
+].join("\n"));
 makeSkill("xmux-implement");
 makeSkill("xmux-send");
 makeSkill("xmux-extra");
@@ -97,14 +101,19 @@ assert.equal(first.stdout.includes("xmux-implement"), true, "first install shoul
 const rulesFile = path.join(codexHome, "rules", "default.rules");
 const rulesContent = fs.readFileSync(rulesFile, "utf8");
 assert.equal(
-  rulesContent.includes(`prefix_rule(pattern=[${JSON.stringify(path.join(repoRoot, "bin", "xmux"))}], decision="allow")`),
+  rulesContent.includes('prefix_rule(pattern=["xmux"], decision="allow")'),
   true,
-  "setup should allow only the configured XMux wrapper path",
+  "setup should allow bare xmux from the configured PATH",
 );
 assert.equal(
-  rulesContent.includes('prefix_rule(pattern=["xmux"], decision="allow")'),
+  rulesContent.includes(`prefix_rule(pattern=[${JSON.stringify(path.join(repoRoot, "bin", "xmux"))}], decision="allow")`),
   false,
-  "setup should remove legacy bare xmux allow rules",
+  "setup should not install absolute xmux allow rules for skill commands",
+);
+assert.equal(
+  rulesContent.includes("# XMux wrapper. XMux skills still control operation scope."),
+  false,
+  "setup should remove the old unmarked bare xmux allow rule block",
 );
 const configContent = fs.readFileSync(path.join(codexHome, "config.toml"), "utf8");
 assert.equal(configContent.includes('sandbox_mode = "workspace-write"'), false, "setup should not keep legacy sandbox_mode");
@@ -126,9 +135,18 @@ for (const name of ["xmux-claude", "xmux-implement", "xmux-send"]) {
     `${name} should be marked as XMux-managed`,
   );
 }
+assert.equal(
+  fs.readFileSync(path.join(skillsRoot, "xmux-claude", "SKILL.md"), "utf8").includes("xmux claude send"),
+  true,
+  "installed skills should keep bare xmux commands from the source skill",
+);
 assert.equal(fs.existsSync(path.join(skillsRoot, "xmux-extra")), false, "non-public XMux skills are ignored");
 
-fs.writeFileSync(path.join(skillsRoot, "xmux-claude", "SKILL.md"), "# stale xmux-claude\n", "utf8");
+fs.writeFileSync(
+  path.join(skillsRoot, "xmux-claude", "SKILL.md"),
+  "# stale xmux-claude\n\"/opt/homebrew/opt/xmux/libexec/bin/xmux\" claude send\n",
+  "utf8",
+);
 const staleDoctor = runDoctor();
 assert.equal(staleDoctor.status, 1, "doctor should fail when an installed managed skill is stale");
 assert.equal(
@@ -148,6 +166,9 @@ assert.equal(
   false,
   "doctor should stop reporting stale skills after refresh reinstalls them",
 );
+const refreshedSkill = fs.readFileSync(path.join(skillsRoot, "xmux-claude", "SKILL.md"), "utf8");
+assert.equal(refreshedSkill.includes("xmux claude send"), true, "refresh should reinstall bare xmux command text");
+assert.equal(refreshedSkill.includes("/bin/xmux"), false, "refresh should remove old absolute xmux command text");
 
 fs.rmSync(tempRoot, { recursive: true, force: true });
 console.log("codex setup skill tests passed");

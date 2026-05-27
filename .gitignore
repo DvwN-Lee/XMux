@@ -29,6 +29,7 @@ tests/*
 !tests/claude-pane-context.js
 !tests/claude-prompt-input.js
 !tests/codex-skill-transport-consent.js
+!tests/xmux-implement-skill-workflow.js
 !tests/session-state.js
 !tests/workflow-cli.js
 !tests/workflow-state.js

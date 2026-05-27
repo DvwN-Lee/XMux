@@ -1,7 +1,7 @@
 interface:
   display_name: "xmux-implement"
   short_description: "Run evidence-gated implement -> verify -> Claude review workflow."
-  default_prompt: "Use only when the prompt starts with $xmux-implement. Create a run with \"$XMUX_INSTALL_DIR/bin/xmux\" workflow start, classify risk with workflow classify, implement as Codex single writer, record verification with workflow evidence, send Claude review through \"$XMUX_INSTALL_DIR/bin/xmux\" claude send --trigger xmux-claude --transport-consent xmux-implement --phase review, record Claude-owned review with workflow phase, record blocking findings with workflow finding, and run workflow gate before declaring completion. Do not use raw tmux, teammate/MCP routing, legacy sendPane, or direct Claude transport outside XMux wrapper commands."
+  default_prompt: "Use only when the prompt starts with $xmux-implement. Create a run with xmux workflow start, classify risk with workflow classify, implement as Codex single writer, record verification with workflow evidence, send Claude review through xmux claude send --trigger xmux-claude --transport-consent xmux-implement --phase review, record Claude-owned review with workflow phase, record blocking findings with workflow finding, and run workflow gate before declaring completion. Do not use raw tmux, teammate/MCP routing, legacy sendPane, or direct Claude transport outside XMux commands."
 
 policy:
   allow_implicit_invocation: false

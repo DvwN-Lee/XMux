@@ -29,27 +29,27 @@ reviewer through the XMux Claude harness.
 Create a run before editing:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" workflow start --task-ref "<short task ref>" --done-criteria "<criterion>" --json
+xmux workflow start --task-ref "<short task ref>" --done-criteria "<criterion>" --json
 ```
 
 Classify risk with rule-derived triggers. Codex may raise risk, never lower it:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" workflow classify --run-id "<run_id>" --changed-files <n> --changed-lines <n> --trigger "<trigger>" --json
+xmux workflow classify --run-id "<run_id>" --changed-files <n> --changed-lines <n> --trigger "<trigger>" --json
 ```
 
 After implementation, record raw verification evidence. Prose-only verification
 is not enough:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" workflow evidence --run-id "<run_id>" --cmd "<command>" --exit-code <code> --summary "<summary>" --output-tail "<tail>" --json
+xmux workflow evidence --run-id "<run_id>" --cmd "<command>" --exit-code <code> --summary "<summary>" --output-tail "<tail>" --json
 ```
 
 Send a Claude review packet after verification. The first-token
 `$xmux-implement` is transport consent for this workflow review handoff:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" claude send --trigger xmux-claude --transport-consent xmux-implement --phase review --title "review:<run_id>" --prompt "<Claude review packet>" --json
+xmux claude send --trigger xmux-claude --transport-consent xmux-implement --phase review --title "review:<run_id>" --prompt "<Claude review packet>" --json
 ```
 
 The `--phase review` option emits the `[xmux-claude-review]` marker. Do not
@@ -71,13 +71,13 @@ After Claude responds through `[xmux-claude-response]`, record the review phase
 with the request id returned by `xmux claude send`:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" workflow phase --run-id "<run_id>" --phase review --owner claude --status approved --request-id "<request_id>" --evidence-sufficiency sufficient --json
+xmux workflow phase --run-id "<run_id>" --phase review --owner claude --status approved --request-id "<request_id>" --evidence-sufficiency sufficient --json
 ```
 
 If Claude requests changes, record each blocking finding:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" workflow finding --run-id "<run_id>" --id "<finding_id>" --severity medium --type request_changes --status open --file "<path>" --line <line> --rationale "<why>" --required-fix "<fix>" --json
+xmux workflow finding --run-id "<run_id>" --id "<finding_id>" --severity medium --type request_changes --status open --file "<path>" --line <line> --rationale "<why>" --required-fix "<fix>" --json
 ```
 
 Then fix, re-verify, and record `review-recheck` through the same review route.
@@ -85,7 +85,7 @@ Then fix, re-verify, and record `review-recheck` through the same review route.
 Before declaring completion, run the final gate:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" workflow gate --run-id "<run_id>" --json
+xmux workflow gate --run-id "<run_id>" --json
 ```
 
 If the gate returns `blocked`, continue the workflow or report the blocking
@@ -105,7 +105,7 @@ Do not use:
 - raw `tmux`, `send-keys`, `paste-buffer`, or `load-buffer`
 - teammate/MCP routing paths
 - legacy `xmux sendPane`
-- Claude transport without XMux wrapper commands
+- Claude transport outside XMux commands
 
 All workflow state must go through `xmux workflow ...`. Claude communication
 must go through `xmux claude send ...`.

@@ -13,7 +13,7 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
-function assertSkillContentUsesConsent(name, trigger, command, skill, agent, expectedWrapper) {
+function assertSkillContentUsesConsent(name, trigger, command, skill, agent) {
   for (const [label, content] of [["SKILL.md", skill], ["agents/openai.yaml", agent]]) {
     const unescaped = content.replace(/\\"/g, '"');
     assert.equal(
@@ -22,31 +22,52 @@ function assertSkillContentUsesConsent(name, trigger, command, skill, agent, exp
       `${name} ${label} should carry ${trigger} transport consent as an argv flag`,
     );
     assert.equal(
-      unescaped.includes(`"${expectedWrapper}" ${command}`),
+      unescaped.includes(`xmux ${command}`),
       true,
-      `${name} ${label} should call the expected xmux wrapper`,
+      `${name} ${label} should call bare xmux ${command}`,
     );
     assert.equal(
       unescaped.includes("XMUX_TRANSPORT_CONSENT="),
       false,
       `${name} ${label} should not put transport consent before the xmux command`,
     );
+    assert.equal(
+      unescaped.includes("$XMUX_INSTALL_DIR/bin/xmux"),
+      false,
+      `${name} ${label} should not use the old templated xmux wrapper`,
+    );
+    assert.equal(
+      /(?:^|\s)["']?\/[^"'\s]*\/bin\/xmux["']?\s/.test(unescaped),
+      false,
+      `${name} ${label} should not use an absolute xmux wrapper`,
+    );
   }
 }
 
-function assertCodexSkillUsesConsent(name, trigger, command, root, expectedWrapper) {
+function assertCodexSkillUsesConsent(name, trigger, command, root) {
   const skill = fs.readFileSync(path.join(root, name, "SKILL.md"), "utf8");
   const agent = fs.readFileSync(path.join(root, name, "agents", "openai.yaml"), "utf8");
-  assertSkillContentUsesConsent(name, trigger, command, skill, agent, expectedWrapper);
+  assertSkillContentUsesConsent(name, trigger, command, skill, agent);
 }
 
 const sourceSkillsRoot = path.join(repoRoot, "assets", "codex", "skills");
-const sourceWrapper = "$XMUX_INSTALL_DIR/bin/xmux";
-const installedWrapper = path.join(repoRoot, "bin", "xmux");
 
-assertCodexSkillUsesConsent("xmux-claude", "xmux-claude", "claude send", sourceSkillsRoot, sourceWrapper);
-assertCodexSkillUsesConsent("xmux-implement", "xmux-implement", "claude send", sourceSkillsRoot, sourceWrapper);
-assertCodexSkillUsesConsent("xmux-send", "xmux-send", "send-pane", sourceSkillsRoot, sourceWrapper);
+assertCodexSkillUsesConsent("xmux-claude", "xmux-claude", "claude send", sourceSkillsRoot);
+assertCodexSkillUsesConsent("xmux-implement", "xmux-implement", "claude send", sourceSkillsRoot);
+assertCodexSkillUsesConsent("xmux-send", "xmux-send", "send-pane", sourceSkillsRoot);
+
+for (const relativePath of [
+  "docs/operations/skills.md",
+  "docs/operations/debugging.md",
+  "docs/runtime/codex-lead.md",
+]) {
+  const content = read(relativePath);
+  assert.equal(
+    content.includes("$XMUX_INSTALL_DIR/bin/xmux"),
+    false,
+    `${relativePath} should document bare xmux commands instead of the old skill wrapper template`,
+  );
+}
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "xmux-skill-consent-"));
 try {
@@ -80,9 +101,9 @@ try {
       `${name} installed skill should be XMux-managed`,
     );
   }
-  assertCodexSkillUsesConsent("xmux-claude", "xmux-claude", "claude send", installedRoot, installedWrapper);
-  assertCodexSkillUsesConsent("xmux-implement", "xmux-implement", "claude send", installedRoot, installedWrapper);
-  assertCodexSkillUsesConsent("xmux-send", "xmux-send", "send-pane", installedRoot, installedWrapper);
+  assertCodexSkillUsesConsent("xmux-claude", "xmux-claude", "claude send", installedRoot);
+  assertCodexSkillUsesConsent("xmux-implement", "xmux-implement", "claude send", installedRoot);
+  assertCodexSkillUsesConsent("xmux-send", "xmux-send", "send-pane", installedRoot);
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

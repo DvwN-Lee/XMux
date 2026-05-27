@@ -25,11 +25,11 @@ If neither trigger is the first token, do not send anything.
 
 The explicit first-token trigger is the user's consent for the single XMux
 Codex-to-Codex transport operation in that turn. Run the exact
-`xmux send-pane ...` command produced from that trigger through the configured
-absolute XMux wrapper path. `--transport-consent` carries the first-token
-consent without a leading shell environment assignment, so Codex policy can
-match the wrapper command prefix and the command can run inside the configured
-sandbox.
+`xmux send-pane ...` command produced from that trigger. `xmux setup-xmux`
+configures the Codex shell PATH so the bare `xmux` command resolves inside the
+configured sandbox. `--transport-consent` carries the first-token consent
+without a leading shell environment assignment, so Codex policy can match the
+command prefix.
 
 If the user did not start the prompt with `$xmux-send` or `$xmux-send!`, do not
 run Codex-to-Codex transport. Report that the explicit trigger is required
@@ -81,7 +81,7 @@ target: <target>
 Then send through the single command path:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" send-pane --to <target> --prompt "<full marked prompt>" --transport-consent xmux-send --json
+xmux send-pane --to <target> --prompt "<full marked prompt>" --transport-consent xmux-send --json
 ```
 
 Use `--transport-consent 'xmux-send!'` for raw mode.

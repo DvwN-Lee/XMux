@@ -47,21 +47,17 @@ Codex skill triggers are explicit-first-token only:
   one-way`; use `<project>/<session>` for cross-project targets.
 
 These triggers are also the consent boundary for XMux transport. When a prompt
-starts with one of the explicit triggers, the Codex skill runs the single
-absolute wrapper command needed for that transport inside the configured Codex
-sandbox:
-`$XMUX_INSTALL_DIR/bin/xmux claude send --transport-consent ...` for
-`$xmux-claude`, `$XMUX_INSTALL_DIR/bin/xmux workflow ...` plus Claude review
-handoff for `$xmux-implement`, and
-`$XMUX_INSTALL_DIR/bin/xmux send-pane --transport-consent ...` for
-`$xmux-send`. Without the
-explicit first-token trigger, the skill must not send by another route. The
-generated wrapper command must carry
-`--transport-consent` with the matching trigger value; direct wrapper calls
-without that consent marker are rejected before transport. The older
-`XMUX_TRANSPORT_CONSENT` environment variable remains accepted for
-compatibility, but installed Codex skills use the flag so the configured XMux
-wrapper remains the command prefix seen by Codex policy.
+starts with one of the explicit triggers, the Codex skill runs the bare
+`xmux` command from the Codex shell policy PATH:
+`xmux claude send --transport-consent ...` for `$xmux-claude`,
+`xmux workflow ...` plus Claude review handoff for `$xmux-implement`, and
+`xmux send-pane --transport-consent ...` for `$xmux-send`. Without the explicit
+first-token trigger, the skill must not send by another route. The generated
+command must carry `--transport-consent` with the matching trigger value;
+direct calls without that consent marker are rejected before transport. The
+older `XMUX_TRANSPORT_CONSENT` environment variable remains accepted for
+compatibility, but installed Codex skills use the flag so `xmux` remains the
+command prefix seen by Codex policy.
 
 `xmux setup-xmux` installs the Codex `xmux-workspace` permission profile for
 this path: workspace roots and `$TMPDIR` remain writable, public network

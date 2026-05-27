@@ -26,10 +26,10 @@ hooks, start Claude, or send any prompt.
 
 The explicit first-token trigger is the user's consent for the single XMux
 Claude transport operation in that turn. Run the exact `xmux claude send ...`
-command produced from that trigger through the configured absolute XMux wrapper
-path. `--transport-consent` carries the first-token consent without a leading
-shell environment assignment, so Codex policy can match the wrapper command
-prefix and the command can run inside the configured sandbox.
+command produced from that trigger. `xmux setup-xmux` configures the Codex
+shell PATH so the bare `xmux` command resolves inside the configured sandbox.
+`--transport-consent` carries the first-token consent without a leading shell
+environment assignment, so Codex policy can match the command prefix.
 
 If the user did not start the prompt with `$xmux-claude` or `$xmux-claude!`, do
 not run Claude transport. Report that the explicit trigger is required instead
@@ -43,7 +43,7 @@ of sending through another path.
 3. Send the generated prompt through the single XMux entrypoint:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" claude send --trigger xmux-claude --transport-consent xmux-claude --title "<short request title>" --prompt "<generated Claude-facing prompt>" --quiet
+xmux claude send --trigger xmux-claude --transport-consent xmux-claude --title "<short request title>" --prompt "<generated Claude-facing prompt>" --quiet
 ```
 
 `xmux claude send` installs hooks and ensures the split-pane Claude Code TUI
@@ -64,7 +64,7 @@ in-memory body. XMux does not persist the prompt body in its JSON state.
 For raw mode, use the explicit raw trigger:
 
 ```zsh
-"$XMUX_INSTALL_DIR/bin/xmux" claude send --trigger 'xmux-claude!' --transport-consent 'xmux-claude!' --raw --title "<short request title>" --prompt "<literal Claude-facing prompt>" --quiet
+xmux claude send --trigger 'xmux-claude!' --transport-consent 'xmux-claude!' --raw --title "<short request title>" --prompt "<literal Claude-facing prompt>" --quiet
 ```
 
 4. After `xmux claude send` succeeds, do not wait, read, summarize, or confirm

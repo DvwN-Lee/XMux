@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.5 - 2026-05-27
+
+- Switched Codex XMux skills and agent prompts to use the bare `xmux`
+  command from the configured Codex PATH instead of templated absolute wrapper
+  paths.
+- Removed Codex skill install-time wrapper rewriting so `setup-xmux --refresh`
+  reinstalls source skill text and clears stale absolute-path installs.
+- Ensured Claude panes prepend the XMux command bin to PATH, and expanded
+  `doctor-xmux` diagnostics to flag a non-executable configured `xmux`
+  command path.
+
 ## 1.0.4 - 2026-05-27
 
 - Changed Homebrew-installed XMux wrappers and setup output to preserve the

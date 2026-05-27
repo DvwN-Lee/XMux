@@ -38,6 +38,8 @@ const CODEX_REQUEST_MARKER = `[${CODEX_REQUEST_NAME}]`;
 const CODEX_RESPONSE_MARKER = `[${CODEX_RESPONSE_NAME}]`;
 const CLAUDE_REQUEST_MARKER = `[${CLAUDE_REQUEST_NAME}]`;
 const CLAUDE_RESPONSE_MARKER = `[${CLAUDE_RESPONSE_NAME}]`;
+const HOMEBREW_PREFIXES = ['/opt/homebrew', '/usr/local'];
+const XMUX_HOMEBREW_FORMULAS = ['xmux', 'xmux-beta'];
 const SESSION_EXIT_CLEANUP_SETTLE_MS = 100;
 const SESSION_EXIT_MARKER_FIELDS = [
   'exited_at',
@@ -405,6 +407,39 @@ function projectDir() {
 function xmuxBinPath() {
   const candidate = path.join(installRoot(), 'bin', 'xmux');
   return fs.existsSync(candidate) ? candidate : 'xmux';
+}
+
+function xmuxCommandBinForInstallDir(xmuxInstallDir) {
+  const installDir = path.resolve(expandUser(xmuxInstallDir));
+  const parts = installDir.split(path.sep).filter(Boolean);
+  const prefix = installDir.startsWith(path.sep) ? `${path.sep}${parts[0]}${path.sep}${parts[1]}` : '';
+  if (!HOMEBREW_PREFIXES.includes(prefix)) return path.join(installDir, 'bin');
+  const rest = parts.slice(2);
+  if (
+    rest.length === 3
+    && rest[0] === 'opt'
+    && XMUX_HOMEBREW_FORMULAS.includes(rest[1])
+    && rest[2] === 'libexec'
+  ) {
+    return path.join(prefix, 'bin');
+  }
+  if (
+    rest.length === 4
+    && rest[0] === 'Cellar'
+    && XMUX_HOMEBREW_FORMULAS.includes(rest[1])
+    && rest[3] === 'libexec'
+  ) {
+    return path.join(prefix, 'Cellar', rest[1], rest[2], 'bin');
+  }
+  return path.join(installDir, 'bin');
+}
+
+function pathWithXmuxCommandBin(basePath = process.env.PATH || '') {
+  const commandBin = xmuxCommandBinForInstallDir(installRoot());
+  const parts = String(basePath || '')
+    .split(path.delimiter)
+    .filter((part) => part && path.resolve(expandUser(part)) !== path.resolve(commandBin));
+  return [commandBin, ...parts].join(path.delimiter);
 }
 
 function runTmux(args, options = {}) {
@@ -1763,6 +1798,7 @@ async function ensurePaneSession(name = DEFAULT_SESSION, opts = {}, root = state
   delete session.pane_ready_cwd;
   writeSession(session, root);
   const command = [
+    `PATH=${shellQuote(pathWithXmuxCommandBin())}`,
     `XMUX_PROJECT_DIR=${shellQuote(projectDir())}`,
     `XMUX_STATE_DIR=${shellQuote(root)}`,
     `XMUX_INSTALL_DIR=${shellQuote(installRoot())}`,
@@ -2734,6 +2770,8 @@ module.exports = {
   resolveCodexPaneContext,
   decorateSessionRuntime,
   finalizePaneRunSessionExit,
+  pathWithXmuxCommandBin,
+  xmuxCommandBinForInstallDir,
 };
 
 if (require.main === module) {

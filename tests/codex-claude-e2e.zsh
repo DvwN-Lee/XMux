@@ -128,7 +128,7 @@ def extract_prompt(buffer, marker):
 
 
 version = run_xmux(["--version"], timeout=10)
-if version.returncode != 0 or "xmux 1.0.4" not in version.stdout:
+if version.returncode != 0 or "xmux 1.0.5" not in version.stdout:
     sys.exit(10)
 
 claude_cmd = " ".join(shlex.quote(item) for item in [FAKE_CLAUDE, XMUX, DONE, FINAL_DONE, ACCEPTED, CLAUDE_REPLY, CODEX_REPLY])
@@ -158,7 +158,7 @@ send = run_xmux(
         "--phase",
         "review",
         "--prompt",
-        "CLAUDE_E2E_REQUEST: reply with HOOK-PONG-1.0.4",
+        "CLAUDE_E2E_REQUEST: reply with HOOK-PONG-1.0.5",
         "--wait",
         "--timeout",
         "30",
@@ -354,7 +354,7 @@ while time.time() < deadline:
                 "--title",
                 "E2E Claude to Codex",
                 "--prompt",
-                "CODEX_E2E_REQUEST: reply with CODEX-PONG-1.0.4",
+                "CODEX_E2E_REQUEST: reply with CODEX-PONG-1.0.5",
                 "--json",
             ],
             timeout=30,
@@ -386,8 +386,8 @@ version_output="$(
   XMUX_PROJECT_DIR="$project_dir" \
   "$repo_root/bin/xmux" --version
 )"
-[[ "$version_output" == "xmux 1.0.4" ]] || {
-  print -u2 "expected xmux 1.0.4, got: $version_output"
+[[ "$version_output" == "xmux 1.0.5" ]] || {
+  print -u2 "expected xmux 1.0.5, got: $version_output"
   exit 1
 }
 
@@ -403,8 +403,8 @@ version_output="$(
     "$final_done" \
     "$codex_accepted" \
     "$bin_dir/fake-claude.py" \
-    "HOOK-PONG-1.0.4" \
-    "CODEX-PONG-1.0.4"
+    "HOOK-PONG-1.0.5" \
+    "CODEX-PONG-1.0.5"
 )
 session_started=1
 
@@ -416,11 +416,11 @@ for _ in {1..80}; do
       break
     fi
   done < <(tmux list-sessions -F '#{session_name}	#{@xmux-project-dir}	#{@xmux-version}' 2>/dev/null || true)
-  [[ "$session_version" == "1.0.4" ]] && break
+  [[ "$session_version" == "1.0.5" ]] && break
   sleep 0.25
 done
-[[ "$session_version" == "1.0.4" ]] || {
-  print -u2 "expected tmux @xmux-version 1.0.4, got: ${session_version:-missing}"
+[[ "$session_version" == "1.0.5" ]] || {
+  print -u2 "expected tmux @xmux-version 1.0.5, got: ${session_version:-missing}"
   print_debug
   exit 1
 }

@@ -366,6 +366,19 @@ function xmuxCommandBinForInstallDir(xmuxInstallDir) {
   return homebrewWrapperBinForInstallDir(xmuxInstallDir) || path.join(abs(xmuxInstallDir), "bin");
 }
 
+function xmuxCommandPathForInstallDir(xmuxInstallDir) {
+  return path.join(xmuxCommandBinForInstallDir(xmuxInstallDir), "xmux");
+}
+
+function xmuxCommandIsExecutable(xmuxInstallDir) {
+  try {
+    fs.accessSync(xmuxCommandPathForInstallDir(xmuxInstallDir), fs.constants.X_OK);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function pathWithXmuxBin(xmuxInstallDir, basePath = null) {
   const xmuxBin = path.join(abs(xmuxInstallDir), "bin");
   const commandBin = xmuxCommandBinForInstallDir(xmuxInstallDir);
@@ -544,9 +557,8 @@ function legacyCodexSkillsRoot(configPath) {
   return path.join(codexHome(configPath), "skills");
 }
 
-function xmuxCommandRuleLine(xmuxInstallDir) {
-  const xmuxBin = path.join(abs(xmuxInstallDir), "bin", "xmux");
-  return `prefix_rule(pattern=[${JSON.stringify(xmuxBin)}], decision="allow")`;
+function xmuxCommandRuleLine() {
+  return 'prefix_rule(pattern=["xmux"], decision="allow")';
 }
 
 function installXmuxCommandRule(configPath, xmuxInstallDir) {
@@ -555,7 +567,7 @@ function installXmuxCommandRule(configPath, xmuxInstallDir) {
   content = removeLegacyBareXmuxCommandRules(content);
   const block = [
     RULE_BEGIN,
-    "# Allow only the configured XMux wrapper; XMux skills add transport consent.",
+    "# Allow bare xmux from the configured Codex PATH; XMux skills add transport consent.",
     xmuxCommandRuleLine(xmuxInstallDir),
     RULE_END,
   ].join("\n");
@@ -618,22 +630,16 @@ function xmuxVersionFromInstallDir(xmuxInstallDir) {
   return match ? match[1] : "";
 }
 
-function renderCodexSkillContent(content, xmuxInstallDir) {
-  const wrapper = path.join(abs(xmuxInstallDir), "bin", "xmux");
-  return String(content).replace(/\$XMUX_INSTALL_DIR\/bin\/xmux/g, wrapper);
-}
-
-function copyCodexSkillTree(source, dst, xmuxInstallDir) {
+function copyCodexSkillTree(source, dst) {
   fs.mkdirSync(dst, { recursive: true });
   for (const entry of fs.readdirSync(source).sort()) {
     const sourcePath = path.join(source, entry);
     const dstPath = path.join(dst, entry);
     const stat = fs.statSync(sourcePath);
     if (stat.isDirectory()) {
-      copyCodexSkillTree(sourcePath, dstPath, xmuxInstallDir);
+      copyCodexSkillTree(sourcePath, dstPath);
     } else if (stat.isFile()) {
-      const content = fs.readFileSync(sourcePath, "utf8");
-      writeTextAtomic(dstPath, renderCodexSkillContent(content, xmuxInstallDir));
+      writeTextAtomic(dstPath, fs.readFileSync(sourcePath, "utf8"));
     }
   }
 }
@@ -667,7 +673,7 @@ function installXmuxSkills(configPath, xmuxInstallDir, opts = {}) {
     if (!dryRun) {
       fs.rmSync(dst, { recursive: true, force: true });
       fs.mkdirSync(root, { recursive: true });
-      copyCodexSkillTree(source, dst, xmuxInstallDir);
+      copyCodexSkillTree(source, dst);
       writeTextAtomic(path.join(dst, SKILL_MARKER), `${abs(source)}\n`);
     }
     installed.push(name);
@@ -917,13 +923,13 @@ function listSkillFiles(root) {
   return out;
 }
 
-function skillTreesMatch(source, installed, xmuxInstallDir) {
+function skillTreesMatch(source, installed) {
   const sourceFiles = listSkillFiles(source);
   const installedFiles = listSkillFiles(installed);
   if (sourceFiles.length !== installedFiles.length) return false;
   for (let i = 0; i < sourceFiles.length; i += 1) {
     if (sourceFiles[i] !== installedFiles[i]) return false;
-    const sourceContent = renderCodexSkillContent(readText(path.join(source, sourceFiles[i])), xmuxInstallDir);
+    const sourceContent = readText(path.join(source, sourceFiles[i]));
     const installedContent = readText(path.join(installed, installedFiles[i]));
     if (sourceContent !== installedContent) return false;
   }
@@ -941,6 +947,8 @@ function codexDiagnostics(configPath, xmuxInstallDir, skillsDir = "", opts = {})
 
   if (contentHasShellEnvironment(content, xmuxInstallDir)) notes.push(["OK", "Codex shell PATH includes XMux command bin"]);
   else issues.push("Codex shell PATH/XMUX_INSTALL_DIR setup is missing or stale");
+  if (xmuxCommandIsExecutable(xmuxInstallDir)) notes.push(["OK", `xmux resolves from ${xmuxCommandPathForInstallDir(xmuxInstallDir)}`]);
+  else issues.push(`xmux is not executable at configured PATH entry: ${xmuxCommandPathForInstallDir(xmuxInstallDir)}`);
 
   if (rulesHaveXmuxCommand(configPath, xmuxInstallDir)) notes.push(["OK", `scoped xmux command rule exists in ${rulesPath(configPath)}`]);
   else issues.push("scoped xmux command rule is missing");
@@ -964,7 +972,7 @@ function codexDiagnostics(configPath, xmuxInstallDir, skillsDir = "", opts = {})
   if (missing.length) issues.push(`missing XMux Codex skills: ${missing.join(", ")}`);
   const installedRoot = skillsRoot(configPath);
   const stale = sourceEntries
-    .filter(([name, source]) => installedNames.has(name) && !skillTreesMatch(source, path.join(installedRoot, name), xmuxInstallDir))
+    .filter(([name, source]) => installedNames.has(name) && !skillTreesMatch(source, path.join(installedRoot, name)))
     .map(([name]) => name)
     .sort();
   if (stale.length) issues.push(`stale XMux Codex skills: ${stale.join(", ")}; run xmux setup-xmux --refresh`);

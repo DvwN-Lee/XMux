@@ -10,6 +10,8 @@ const { readUnifiedSession, writeUnifiedSession } = require("../src/xmux/session
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "xmux-claude-context-"));
 const fakeBin = path.join(tempRoot, "bin");
+const repoRoot = path.resolve(__dirname, "..");
+const originalInstallDir = process.env.XMUX_INSTALL_DIR;
 fs.mkdirSync(fakeBin, { recursive: true });
 
 const fakeTmux = `#!/usr/bin/env node
@@ -50,6 +52,7 @@ fs.chmodSync(fakeTmuxPath, 0o755);
 
 process.env.PATH = `${fakeBin}${path.delimiter}${process.env.PATH || ""}`;
 process.env.XMUX_STATE_DIR = tempRoot;
+process.env.XMUX_INSTALL_DIR = repoRoot;
 delete process.env.TMUX_PANE;
 
 writeUnifiedSession("codex", {
@@ -63,11 +66,24 @@ writeUnifiedSession("codex", {
 const {
   decorateSessionRuntime,
   finalizePaneRunSessionExit,
+  pathWithXmuxCommandBin,
   resolveCodexPaneContext,
+  xmuxCommandBinForInstallDir,
 } = require("../src/claude/cli");
 
 const claudeRequestsDir = path.join(tempRoot, "claude", "requests");
 fs.mkdirSync(claudeRequestsDir, { recursive: true });
+
+assert.equal(
+  xmuxCommandBinForInstallDir(repoRoot),
+  path.join(repoRoot, "bin"),
+  "source installs should expose the repo bin directory as the xmux command bin",
+);
+assert.equal(
+  pathWithXmuxCommandBin(fakeBin).startsWith(`${path.join(repoRoot, "bin")}${path.delimiter}`),
+  true,
+  "Claude pane PATH should prepend the XMux command bin so bare xmux resolves",
+);
 
 function writeJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
@@ -314,5 +330,7 @@ assert.equal(readyClears.pane_killed_at, undefined);
 assert.equal(readyClears.pane_exited_at, undefined);
 
 fs.rmSync(tempRoot, { recursive: true, force: true });
+if (originalInstallDir === undefined) delete process.env.XMUX_INSTALL_DIR;
+else process.env.XMUX_INSTALL_DIR = originalInstallDir;
 
 console.log("claude pane context tests passed");
